@@ -66,7 +66,7 @@ test('未回答・範囲外・壊れた提示順はCSV化を拒否', () => {
 test('生回答と版、固定列順、注意確認を保存し自動除外しない', () => {
   const s = state(); s.answers.AC01 = '2'; s.answers.A01 = 'SKIP';
   const result = core.buildRecord(globalThis.SURVEY_CONFIG, data, s);
-  assert.equal(result.data_mode, 'preview');
+  assert.equal(result.data_mode, 'live');
   assert.equal(result.A01, 'SKIP');
   assert.equal(result.scored_response_n, 38);
   assert.equal(result.attention_check, 'pass');
@@ -78,15 +78,24 @@ test('生回答と版、固定列順、注意確認を保存し自動除外し�
   assert.deepEqual(Object.keys(result), Object.keys(other));
   assert.equal(result.presentation_order.split('|').length, 40);
 });
-test('本調査モードの必須説明が空欄なら開始できない', () => {
+test('画面内説明モードは必須説明が空欄なら開始できない', () => {
   const cfg = globalThis.SURVEY_CONFIG;
   assert.deepEqual(core.validateStudy(cfg), []);
-  assert.ok(core.validateStudy({ ...cfg, mode: 'live' }).includes('contact'));
+  assert.ok(core.validateStudy({ ...cfg, mode: 'live', participantInformationMode: 'onsite' }).includes('contact'));
   assert.ok(core.validateStudy({ ...cfg, mode: 'typo' }).includes('mode'));
   assert.ok(core.validateStudy({ ...cfg, minimumAge: 16 }).length);
-  const complete = { ...cfg, mode: 'live' };
+  const complete = { ...cfg, mode: 'live', participantInformationMode: 'onsite' };
   for (const key of core.validateStudy(complete)) complete[key] = '設定済み';
   assert.deepEqual(core.validateStudy(complete), []);
+});
+test('共通正式版は実施者情報を固定せず、説明方式を明示して開始できる', () => {
+  const cfg = globalThis.SURVEY_CONFIG;
+  assert.equal(cfg.mode, 'live'); assert.equal(cfg.participantInformationMode, 'external');
+  assert.deepEqual(core.validateStudy(cfg), []);
+  assert.ok(core.validateStudy({ ...cfg, participantInformationMode: 'typo' }).includes('participantInformationMode'));
+  assert.ok(core.validateStudy({ ...cfg, submissionInstructions: '' }).includes('submissionInstructions'));
+  assert.deepEqual(core.validateStudy({ ...cfg, mode: 'preview', participantInformationMode: 'onsite' }), []);
+  assert.equal(core.buildRecord({ ...cfg, mode: 'preview' }, data, state()).data_mode, 'preview');
 });
 test('利用意思の未選択・文字列・不正値を同意として扱わない', () => {
   for (const value of [undefined, null, '', 'yes', 'no', 0, 1]) {

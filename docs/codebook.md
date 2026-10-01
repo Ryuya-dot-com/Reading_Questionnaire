@@ -1,6 +1,6 @@
 # CSVコードブック
 
-質問紙版・同意版：2026-10-01.6。CSVスキーマ4、301列、1回答者1行のwide形式。ファイル先頭はUTF-8 BOM、行末はCRLFです。列名は解析しやすいASCII、自由記述は日本語のまま保存します。
+質問紙版・同意版：2026-10-01.7。CSVスキーマ4、301列、1回答者1行のwide形式。ファイル先頭はUTF-8 BOM、行末はCRLFです。列名は解析しやすいASCII、自由記述は日本語のまま保存します。
 
 ## 最初に確認する利用意思
 
@@ -25,14 +25,14 @@
 | 列名 | 定義 |
 | --- | --- |
 | `schema_version` | CSV列構成の版。現在は4。旧版の1・2・3とは列構成が異なる。 |
-| `study_id` | 調査識別子。 |
+| `study_id` | 公開先の識別子。共通版は `reading-questionnaire-shared` 固定であり、研究ごとの識別はできない。研究別に回収を分けるか、専用公開で変更する。 |
 | `instrument_version` | 項目・教示・実施方法・得点化の版。 |
 | `consent_version` | 説明・同意文の版。 |
-| `data_mode` | preview=動作確認、live=本調査。混ぜて分析しない。 |
+| `data_mode` | preview=動作確認、live=正式公開版。各研究での説明と利用意思は別途確認する。previewを混ぜて分析しない。 |
 | `response_id` | 端末で生成するrq-UUID。再ダウンロード時は同じID。別セッションの重複参加は検出しない。 |
 | `record_type` | response=回答記録、refusal=利用不可の管理記録。 |
 | `research_use_allowed` | yes=利用禁止の質問で「いいえ」を明示的に選択、no=「はい」を選択して利用禁止。previewのyesは本調査での使用許可を意味しない。 |
-| `consent` | yes=開始説明を確認し、利用禁止の質問で「いいえ」を選び開始（previewでは動作確認）、no=開始前から利用禁止、withdrawn=開始後・完了前に利用禁止。 |
+| `consent` | yes=開始説明（共通版では調査担当者からの事前説明を含む）を確認し、利用禁止の質問で「いいえ」を選び開始（previewでは動作確認）、no=開始前から利用禁止、withdrawn=開始後・完了前に利用禁止。 |
 | `eligibility_japanese_l1` | yes=日本語母語（複数母語を含む）の自己確認。 |
 | `eligibility_english_learner` | yes=英語学習者の自己確認。 |
 | `eligibility_age_18plus` | yes=18歳以上の自己確認。 |

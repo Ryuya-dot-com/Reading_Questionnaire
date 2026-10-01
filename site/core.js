@@ -91,9 +91,11 @@
   function validateStudy(config) {
     if (!["preview", "live"].includes(config.mode)) return ["mode"];
     if (config.minimumAge !== 18) return ["minimumAge（現在の対象者説明は18歳以上専用）"];
+    if (!["external", "onsite"].includes(config.participantInformationMode)) return ["participantInformationMode"];
     if (config.mode === "preview") return [];
-    return ["researcher", "affiliation", "contact", "ethicsStatement", "retentionStatement", "withdrawalStatement", "submissionInstructions"]
-      .filter(key => !String(config[key] ?? "").trim());
+    const required = config.participantInformationMode === "external" ? ["submissionInstructions"]
+      : ["researcher", "affiliation", "contact", "ethicsStatement", "retentionStatement", "withdrawalStatement", "submissionInstructions"];
+    return required.filter(key => !String(config[key] ?? "").trim());
   }
   function normalizeDaily(data, values = {}) {
     function selections(key, options) {

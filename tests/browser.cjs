@@ -52,6 +52,7 @@ function assertRefusal(row) {
     await page.goto(base);
     assert.match(await page.locator('#app').innerText(), /結果によって成績が下がることはありません/);
     assert.match(await page.locator('#app').innerText(), /回答にかかった時間と操作の記録/);
+    assert.match(await page.locator('[name=consent]').locator('..').innerText(), /調査担当者からの事前説明/);
     assert.match(await page.locator('#app').innerText(), /個人が特定されるような形式で公開することはありません/);
     await page.screenshot({ path: path.join(output, 'desktop-welcome.png'), fullPage: true });
     assert.equal(await page.locator('[name=prohibit-use]:checked').count(), 0);
@@ -194,7 +195,8 @@ function assertRefusal(row) {
     assert.equal(row.schema_version, '4');
     assert.equal(Object.keys(row).length, 301);
     assert.equal(row.participant_name, '山田 "テスト",確認'); assert.equal(row.student_id, '001234'); assert.equal(row.research_use_allowed, 'yes');
-    assert.equal(row.data_mode, 'preview'); assert.equal(row.attention_check, 'pass');
+    assert.equal(row.data_mode, 'live');
+    assert.equal(row.study_id, 'reading-questionnaire-shared'); assert.equal(row.attention_check, 'pass');
     assert.equal(row.metacognitive_mean_complete, ''); assert.equal(row.enjoyment_pleasure_candidate_mean_complete, '');
     assert.equal(row.exam_types, 'toeic_lr|eiken|other'); assert.equal(row.toeic_lr_total, '850'); assert.equal(row.toeic_lr_reading, '400');
     assert.equal(row.eiken_latest_passed_grade, 'pre_2_plus');
@@ -260,13 +262,22 @@ function assertRefusal(row) {
     mobile.on('dialog', dialog => dialog.accept()); await mobile.locator('#quit').click();
 
     const blocked = await context.newPage();
-    await blocked.route('**/config.js', async route => { const response = await route.fetch(); await route.fulfill({ response, body: (await response.text()).replace('mode: "preview"', 'mode: "live"') }); });
+    await blocked.route('**/config.js', async route => { const response = await route.fetch(); await route.fulfill({ response, body: (await response.text()) + '\nglobalThis.SURVEY_CONFIG = {...globalThis.SURVEY_CONFIG, mode: "live", participantInformationMode: "onsite"};' }); });
     await blocked.goto(base); assert.equal(await blocked.locator('#start').count(), 0);
+
+    const preview = await context.newPage();
+    await preview.route('**/config.js', async route => {
+      const response = await route.fetch();
+      await route.fulfill({ response, body: (await response.text()) + '\nglobalThis.SURVEY_CONFIG = {...globalThis.SURVEY_CONFIG, mode: "preview"};' });
+    });
+    await preview.goto(base); await preview.locator('#prohibit-use-yes').check();
+    const previewRefusal = await downloadRow(preview, '#start', 'preview-refusal.csv');
+    assert.equal(previewRefusal.row.data_mode, 'preview'); assertRefusal(previewRefusal.row);
 
     const live = await context.newPage();
     await live.route('**/config.js', async route => {
       const response = await route.fetch();
-      const override = { mode: 'live', researcher: 'テスト責任者', affiliation: 'テスト所属', contact: 'テスト連絡先', ethicsStatement: 'テスト用説明', retentionStatement: 'テスト用保管説明', withdrawalStatement: 'テスト用撤回説明', submissionUrl: 'https://example.org/upload' };
+      const override = { mode: 'live', participantInformationMode: 'onsite', researcher: 'テスト責任者', affiliation: 'テスト所属', contact: 'テスト連絡先', ethicsStatement: 'テスト用説明', retentionStatement: 'テスト用保管説明', withdrawalStatement: 'テスト用撤回説明', submissionUrl: 'https://example.org/upload' };
       await route.fulfill({ response, body: (await response.text()) + '\nglobalThis.SURVEY_CONFIG = {...globalThis.SURVEY_CONFIG,...' + JSON.stringify(override) + '};' });
     });
     await live.goto(base); await start(live);
