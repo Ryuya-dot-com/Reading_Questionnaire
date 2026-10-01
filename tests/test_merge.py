@@ -90,6 +90,38 @@ class MergeTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "データ利用の意思"):
             module.merge(self.raw, self.root / "all.csv")
 
+    def schema3(self):
+        ids = module.ITEMS + module.L1_ITEMS
+        return {**self.row, "schema_version": "3", **dict.fromkeys(module.L1_ITEMS, "3"), "presentation_order": "|".join(ids),
+                "randomization_method": "language_blocks_and_within_language_v1", "language_block_order": "en|ja", "timing_method": "single_item_visible_focused_v1",
+                **{f"{item}_{field}": "100" if field in {"rt_first_ms", "active_ms"} else "1" if field == "visit_n" else "0" for item in ids for field in module.TIMING_FIELDS}}
+
+    def test_schema3_japanese_and_timing_retained_and_refusal_excluded(self):
+        row = self.schema3()
+        self.write("one.csv", row)
+        self.write("refusal.csv", {**row, "response_id": "rq-refusal", "consent": "no", "research_use_allowed": "no", "record_type": "refusal"})
+        output = self.root / "all.csv"
+        self.assertEqual(module.merge(self.raw, output), (1, 0, 0, 1))
+        with output.open(encoding="utf-8-sig", newline="") as file:
+            self.assertEqual(list(csv.DictReader(file)), [row])
+
+    def test_schema3_incomplete_or_invalid_timing_rejected(self):
+        mutations = [lambda r: r.pop("J01"), lambda r: r.update(J01="6"), lambda r: r.update(J01_rt_first_ms="-1"), lambda r: r.update(J01_rt_first_ms="101"), lambda r: r.update(presentation_order="A01|A01")]
+        for mutate in mutations:
+            with self.subTest(mutation=mutate):
+                row = self.schema3()
+                mutate(row)
+                self.write("one.csv", row)
+                with self.assertRaises(ValueError):
+                    module.merge(self.raw, self.root / "all.csv")
+
+    def test_legacy_schema1_still_loads_separately(self):
+        row = {**self.row, "schema_version": "1"}
+        del row["research_use_allowed"]
+        del row["record_type"]
+        self.write("legacy.csv", row)
+        self.assertEqual(module.merge(self.raw, self.root / "all.csv"), (1, 0, 0, 0))
+
 
 if __name__ == "__main__":
     unittest.main()

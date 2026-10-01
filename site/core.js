@@ -10,12 +10,59 @@
     return copy;
   }
   function makePages(items, random = Math.random) {
-    return ["A", "B"].flatMap(part => {
-      const order = shuffle(items.filter(item => item.part === part).map(item => item.id), random);
-      const pages = [];
-      for (let i = 0; i < order.length; i += 6) pages.push({ part, ids: order.slice(i, i + 6) });
-      return pages;
+    return shuffle(["en", "ja"], random).flatMap(language => {
+      const order = shuffle(items.filter(item => item.language === language).map(item => item.id), random);
+      return order.map(id => ({ language, ids: [id] }));
     });
+  }
+  // monotonic clockを注入できるようにして、非表示・見直しを決定的に検証する。
+  function createItemTimer(clock = () => performance.now()) {
+    const records = {};
+    let current = null, activeSince = null;
+    function flush() {
+      if (current !== null && activeSince !== null) {
+        const now = clock();
+        records[current].activeMs += Math.max(0, now - activeSince);
+        activeSince = now;
+      }
+    }
+    function end() { flush(); current = null; activeSince = null; }
+    return {
+      begin(id, active) {
+        end(); current = id;
+        records[id] ||= { firstMs: null, activeMs: 0, visits: 0, changes: 0, pauses: 0, lastAnswer: null };
+        records[id].visits++;
+        activeSince = active ? clock() : null;
+      },
+      setActive(active) {
+        if (current === null) return;
+        if (active && activeSince === null) activeSince = clock();
+        else if (!active && activeSince !== null) { flush(); activeSince = null; records[current].pauses++; }
+      },
+      respond(id, value) {
+        if (current !== id) return;
+        flush();
+        const record = records[id];
+        if (record.firstMs === null) record.firstMs = record.activeMs;
+        if (record.lastAnswer !== null && record.lastAnswer !== value) record.changes++;
+        record.lastAnswer = value;
+      },
+      end,
+      snapshot() {
+        flush();
+        return Object.fromEntries(Object.entries(records).map(([id, r]) => [id, {
+          rt_first_ms: r.firstMs === null ? "" : Math.round(r.firstMs),
+          active_ms: Math.round(r.activeMs), visit_n: r.visits, change_n: r.changes, pause_n: r.pauses
+        }]));
+      }
+    };
+  }
+  const timingFields = ["rt_first_ms", "active_ms", "visit_n", "change_n", "pause_n"];
+  function progressState(state, itemCount) {
+    const total = itemCount + 5; // 背景・日常使用・練習・各項目・自由記述・確認。開始説明は除く。
+    const positions = { background: 0, daily: 1, practice: 2, questions: 3 + (state.page || 0), open: itemCount + 3, review: itemCount + 4, done: total };
+    const position = positions[state.stage] ?? 0;
+    return { total, position, percent: Math.floor(100 * position / total) };
   }
   function csvCell(value) {
     let text = String(value ?? "");
@@ -74,7 +121,7 @@
     const answers = state.answers || {};
     const prohibited = state.researchUseProhibited === true;
     const record = {
-      schema_version: "2",
+      schema_version: "3",
       study_id: config.studyId,
       instrument_version: config.instrumentVersion,
       consent_version: config.consentVersion,
@@ -91,8 +138,12 @@
       elapsed_seconds: Math.max(0, Math.round(state.elapsedSeconds)),
       ...Object.fromEntries(data.background.map(field => [field.id, state.background?.[field.id] || "SKIP"])),
       ...normalizeDaily(data, state.daily),
+      randomization_method: "language_blocks_and_within_language_v1",
+      language_block_order: [...new Set((state.pages || []).map(page => page.language))].join("|"),
+      timing_method: "single_item_visible_focused_v1",
       presentation_order: order.join("|"),
       ...Object.fromEntries(data.items.map(item => [item.id, answers[item.id]])),
+      ...Object.fromEntries(data.items.flatMap(item => timingFields.map(field => [`${item.id}_${field}`, state.timings?.[item.id]?.[field] ?? ""]))),
       scored_response_n: data.items.filter(item => item.dimension !== "attention" && /^[1-5]$/.test(answers[item.id])).length,
       not_applicable_n: data.items.filter(item => answers[item.id] === "NA").length,
       skipped_n: data.items.filter(item => answers[item.id] === "SKIP").length,
@@ -109,7 +160,7 @@
     if (!state.consentedAt || !state.completedAt) throw new Error("回答完了時刻または同意記録がありません。");
     return record;
   }
-  const core = { validResponses, shuffle, makePages, csvCell, toCsv, score, validateStudy, normalizeDaily, buildRecord };
+  const core = { validResponses, shuffle, makePages, createItemTimer, timingFields, progressState, csvCell, toCsv, score, validateStudy, normalizeDaily, buildRecord };
   globalThis.SurveyCore = core;
   if (typeof module !== "undefined") module.exports = core;
 })();

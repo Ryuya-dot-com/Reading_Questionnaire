@@ -39,6 +39,10 @@ button.secondary:hover { background:var(--pale); }
 .text-button:hover { color:var(--ink); background:transparent; }
 .error { color:#9c2e24; padding:12px 0; font-weight:600; }
 .progress-label { display:flex; justify-content:space-between; gap:12px; font-size:13px; color:var(--muted); margin-bottom:8px; }
+#progress-area { position:sticky; top:0; z-index:2; background:var(--paper); padding:12px 0 10px; margin-bottom:22px; border-bottom:1px solid var(--line); }
+#progress-area progress { margin-bottom:6px; }
+#progress-detail { margin:0; font-size:12px; }
+.language-label { display:inline-block; background:var(--pale); color:var(--green); border:1px solid var(--line); border-radius:6px; padding:5px 12px; font-size:14px; font-weight:600; }
 progress { display:block; width:100%; height:6px; border:0; border-radius:8px; background:var(--line); margin-bottom:28px; }
 progress::-webkit-progress-bar { background:var(--line); border-radius:8px; }
 progress::-webkit-progress-value { background:var(--green); border-radius:8px; }

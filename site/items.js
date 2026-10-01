@@ -37,11 +37,22 @@
     "前より英語が読めるようになったと感じると，うれしい。",
     "少し難しい英語の文章を読みこなせたとき，達成感を味わう。"
   ];
+  // 日本語読解7項目は利用者が提示した探索用項目。PISA/RAT-Aの検証済み短縮版ではない。
+  const japaneseReading = [
+    "日本語の文章を読むのは楽しい。",
+    "日本語の本や記事を読むことは，好きな趣味の一つだ。",
+    "日本語の文章を読んでいて，内容に引き込まれることがある。",
+    "日本語の文章を読んでいて，内容を理解できているか自信が持てないと不安になる。",
+    "日本語の文章を読んでいて，隣り合う文同士の意味のつながりが分からないと混乱する。",
+    "日本語の文章で，ある段落の主旨がつかめないと，緊張する。",
+    "日本語の長い文章を読まなければならないとき，自分の読む力が足りないのではないかと心配になる。"
+  ];
   const items = [
     ...anxiety.map((text, i) => ({ id: `A${String(i + 1).padStart(2, "0")}`, part: "A", text, dimension: i < 12 ? "cognitive" : i < 19 ? "metacognitive" : "classroom" })),
     ...enjoyment.map((text, i) => ({ id: `B${String(i + 1).padStart(2, "0")}`, part: "B", text, dimension: i < 3 ? "enjoyment_pleasure_candidate" : i < 6 ? "enjoyment_immersion_candidate" : "enjoyment_achievement_candidate" })),
-    { id: "AC01", part: "A", dimension: "attention", text: "回答の確認のため，この項目では「2 あまり当てはまらない」を選んでください。" }
-  ];
+    { id: "AC01", part: "A", dimension: "attention", text: "回答の確認のため，この項目では「2 あまり当てはまらない」を選んでください。" },
+    ...japaneseReading.map((text, i) => ({ id: `J${String(i + 1).padStart(2, "0")}`, part: "J", text, dimension: i < 3 ? "l1_enjoyment_candidate" : "l1_anxiety_candidate" }))
+  ].map(item => ({ ...item, language: item.part === "J" ? "ja" : "en" }));
   const choices = [["1", "まったく当てはまらない"], ["2", "あまり当てはまらない"], ["3", "どちらともいえない"], ["4", "やや当てはまる"], ["5", "とてもよく当てはまる"]];
   const background = [
     { id: "age_group", label: "年齢層", options: [["18_19", "18〜19歳"], ["20_24", "20〜24歳"], ["25_34", "25〜34歳"], ["35_44", "35〜44歳"], ["45_plus", "45歳以上"]] },

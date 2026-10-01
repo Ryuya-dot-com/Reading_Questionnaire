@@ -5,6 +5,8 @@ import csv
 from pathlib import Path
 
 ITEMS = [f"A{i:02}" for i in range(1, 24)] + [f"B{i:02}" for i in range(1, 10)] + ["AC01"]
+L1_ITEMS = [f"J{i:02}" for i in range(1, 8)]
+TIMING_FIELDS = ["rt_first_ms", "active_ms", "visit_n", "change_n", "pause_n"]
 VALID = {"1", "2", "3", "4", "5", "NA", "SKIP"}
 
 
@@ -27,9 +29,13 @@ def merge(folder, output, include_preview=False):
                     raise ValueError(f"{path.name}: 列数が一致しない行があります。")
                 if not row["response_id"].startswith("rq-"):
                     raise ValueError(f"{path.name}: 回答者IDが不正です。")
-                if row["data_mode"] not in {"preview", "live"} or row["schema_version"] not in {"1", "2"}:
+                if row["data_mode"] not in {"preview", "live"} or row["schema_version"] not in {"1", "2", "3"}:
                     raise ValueError(f"{path.name}: モード・スキーマが不正です。")
-                if row["schema_version"] == "2":
+                if row["schema_version"] == "3":
+                    new_columns = set(L1_ITEMS + ["randomization_method", "language_block_order", "timing_method", "presentation_order"] + [f"{item}_{field}" for item in ITEMS + L1_ITEMS for field in TIMING_FIELDS])
+                    if not new_columns.issubset(reader.fieldnames):
+                        raise ValueError(f"{path.name}: スキーマ3の項目・計時列が不足しています。")
+                if row["schema_version"] in {"2", "3"}:
                     if row.get("research_use_allowed") == "no" and row.get("record_type") == "refusal" and row["consent"] in {"no", "withdrawn"}:
                         prohibited_ids.add(row["response_id"])
                         continue
@@ -51,8 +57,20 @@ def merge(folder, output, include_preview=False):
             signature, headers = current, columns
         if current != signature or columns != headers:
             raise ValueError(f"{name}: 異なる調査・質問紙版・同意版・モード・列構成を一緒に結合できません。")
-        if any(row[item] not in VALID for item in ITEMS):
+        item_ids = ITEMS + L1_ITEMS if row["schema_version"] == "3" else ITEMS
+        if any(row[item] not in VALID for item in item_ids):
             raise ValueError(f"{name}: 項目の回答値が不正です。")
+        if row["schema_version"] == "3":
+            order = row["presentation_order"].split("|")
+            if len(order) != len(item_ids) or set(order) != set(item_ids):
+                raise ValueError(f"{name}: 提示順に欠落・重複があります。")
+            for item in item_ids:
+                values = [row[f"{item}_{field}"] for field in TIMING_FIELDS]
+                if any(value and (not value.isascii() or not value.isdigit()) for value in values):
+                    raise ValueError(f"{name}: 計時値は非負の整数または空欄である必要があります。")
+                first, active = values[:2]
+                if first and active and int(first) > int(active):
+                    raise ValueError(f"{name}: 初回回答時間が累積表示時間を超えています。")
         response_id = row["response_id"]
         if response_id in records:
             if records[response_id] != row:

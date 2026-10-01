@@ -6,6 +6,7 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { execFileSync } = require('node:child_process');
 const data = require('../site/items.js');
+const headed = process.env.SURVEY_TEST_HEADED === '1';
 const base = process.env.SURVEY_TEST_URL || 'http://127.0.0.1:8000/';
 const output = path.resolve(__dirname, '../test-results');
 fs.mkdirSync(output, { recursive: true });
@@ -21,7 +22,7 @@ async function passIntroduction(page) {
   await page.locator('#next').click(); // Practice → questions
 }
 async function answerAll(page, value = 'SKIP') {
-  for (let p = 0; p < 6; p++) {
+  for (let p = 0; p < data.items.length; p++) {
     assert.doesNotMatch(await page.locator('#app').innerText(), /Part A|PART A|Part B|PART B|パート[AB]/);
     for (const input of await page.locator(`.question input[value="${value}"]`).all()) await input.check();
     await page.locator('#next').click();
@@ -44,7 +45,7 @@ function assertRefusal(row) {
 }
 
 (async () => {
-  const browser = await chromium.launch({ channel: 'chrome', headless: true });
+  const browser = await chromium.launch({ channel: 'chrome', headless: !headed });
   try {
     const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, acceptDownloads: true });
     const page = await context.newPage();
@@ -99,16 +100,38 @@ function assertRefusal(row) {
     await page.screenshot({ path: path.join(output, 'desktop-daily.png'), fullPage: true });
     await page.locator('#next').click();
     await page.locator('[name=practice][value="4"]').check();
-    assert.match(await page.locator('#progress-text').innerText(), /0 \/ 33/);
+    assert.match(await page.locator('#progress-detail').innerText(), /0 \/ 40/);
     await page.screenshot({ path: path.join(output, 'desktop-practice.png'), fullPage: true });
     await page.locator('#next').click();
     await page.locator('#next').click(); assert.ok(await page.locator('#error').isVisible());
     const initialOrder = await page.locator('.question').evaluateAll(nodes => nodes.map(n => n.id));
-    const expected = {}, displayed = [];
-    for (let p = 0; p < 6; p++) {
+    assert.equal(initialOrder.length, 1);
+    // 実際に別タブへ移って計時停止イベントを発生させる。
+    if (headed) {
+      // Playwrightは通常フォーカスを常時trueにエミュレートするため、この検証では解除する。
+      const cdp = await context.newCDPSession(page);
+      await cdp.send('Emulation.setFocusEmulationEnabled', { enabled: false });
+      await page.bringToFront();
+      await page.waitForFunction(() => !document.hidden && document.hasFocus());
+      const otherTab = await context.newPage(); await otherTab.bringToFront();
+      await page.waitForFunction(() => document.hidden || !document.hasFocus());
+      await otherTab.waitForTimeout(120);
+      await page.bringToFront(); await otherTab.close();
+      await page.waitForFunction(() => !document.hidden && document.hasFocus());
+      await cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true });
+      await cdp.detach();
+    }
+    const expected = {}, displayed = [], languages = [];
+    for (let p = 0; p < data.items.length; p++) {
       assert.doesNotMatch(await page.locator('body').innerText(), /PART [AB]|パート[AB]/);
       const names = await page.locator('.question').evaluateAll(nodes => nodes.map(n => n.id.slice(9)));
       displayed.push(...names);
+      assert.equal(names.length, 1);
+      const language = data.items.find(item => item.id === names[0]).language;
+      languages.push(language);
+      assert.match(await page.locator('h2').innerText(), language === 'ja' ? /日本語/ : /英語/);
+      assert.equal(Number(await page.locator('#progress').getAttribute('value')), p + 3);
+      if (language === 'ja' && !languages.slice(0, -1).includes('ja')) await page.screenshot({ path: path.join(output, 'desktop-japanese.png'), fullPage: true });
       for (const id of names) {
         const value = id === 'AC01' ? '2' : id === 'A13' ? 'NA' : id === 'B01' ? 'SKIP' : String((Number(id.slice(1)) % 5) + 1);
         expected[id] = value;
@@ -124,10 +147,16 @@ function assertRefusal(row) {
         for (let i = 0; i < 3; i++) await page.locator('#next').click();
         assert.deepEqual(await page.locator('.question').evaluateAll(nodes => nodes.map(n => n.id)), initialOrder);
         for (const id of names) assert.ok(await page.locator(`input[name="${id}"][value="${expected[id]}"]`).isChecked());
+        const firstId = names[0];
+        const temporary = expected[firstId] === '5' ? '4' : '5';
+        await page.locator(`input[name="${firstId}"][value="${temporary}"]`).check();
+        await page.locator(`input[name="${firstId}"][value="${expected[firstId]}"]`).check();
       }
       await page.locator('#next').click();
     }
-    assert.equal(new Set(displayed).size, 33);
+    assert.equal(new Set(displayed).size, 40);
+    assert.equal(languages.filter((value, i) => i > 0 && value !== languages[i - 1]).length, 1);
+    assert.ok(Number(await page.locator('#progress').getAttribute('value')) < 45);
     await page.locator('#free_learning_experience').fill('=英語学習,"楽しい"\n改行テスト');
     await page.locator('#free_reading_feelings').fill('長い英文は不安。でも物語は楽しい。');
     await page.screenshot({ path: path.join(output, 'desktop-open.png'), fullPage: true });
@@ -137,7 +166,7 @@ function assertRefusal(row) {
     await page.locator('#prohibit-use').check(); await page.locator('#prohibit-use').uncheck();
     const first = await downloadRow(page, '#complete'); const row = first.row;
     for (const item of data.items) assert.equal(row[item.id], expected[item.id]);
-    assert.equal(row.schema_version, '2'); assert.equal(row.research_use_allowed, 'yes');
+    assert.equal(row.schema_version, '3'); assert.equal(row.research_use_allowed, 'yes');
     assert.equal(row.data_mode, 'preview'); assert.equal(row.attention_check, 'pass');
     assert.equal(row.metacognitive_mean_complete, ''); assert.equal(row.enjoyment_pleasure_candidate_mean_complete, '');
     assert.equal(row.exam_types, 'toeic_lr|eiken|other'); assert.equal(row.toeic_lr_total, '850'); assert.equal(row.toeic_lr_reading, '400');
@@ -149,6 +178,17 @@ function assertRefusal(row) {
     assert.equal(row.free_learning_experience, '\'=英語学習,"楽しい"\n改行テスト');
     assert.equal(row.free_reading_feelings, '長い英文は不安。でも物語は楽しい。');
     assert.equal(row.presentation_order, displayed.join('|'));
+    assert.equal(row.language_block_order, [...new Set(languages)].join('|'));
+    assert.equal(row.timing_method, 'single_item_visible_focused_v1');
+    for (const item of data.items) {
+      for (const field of ['rt_first_ms', 'active_ms', 'visit_n', 'change_n', 'pause_n']) assert.match(row[`${item.id}_${field}`], /^\d+$/);
+      assert.ok(Number(row[`${item.id}_rt_first_ms`]) <= Number(row[`${item.id}_active_ms`]));
+      assert.ok(Number(row[`${item.id}_visit_n`]) >= 1);
+    }
+    assert.equal(row[`${displayed[0]}_visit_n`], '2');
+    assert.equal(row[`${displayed[0]}_change_n`], '2');
+    if (headed) assert.ok(Number(row[`${displayed[0]}_pause_n`]) >= 1);
+    assert.match(await page.locator('#progress-text').innerText(), /100%/);
     assert.ok(!Object.keys(row).some(key => key.includes('practice')));
     const retry = await downloadRow(page, '#download', 'retry.csv'); assert.deepEqual(retry.bytes, first.bytes);
     await page.screenshot({ path: path.join(output, 'desktop-complete.png'), fullPage: true });
@@ -199,6 +239,6 @@ function assertRefusal(row) {
 
     const file = await context.newPage(); await file.goto(pathToFileURL(path.resolve(__dirname, '../site/index.html')).href);
     assert.equal(await file.locator('#start').count(), 1);
-    console.log(JSON.stringify({ status: 'passed', downloadedColumns: Object.keys(row).length, itemCount: 33, dailyQuestions: 6, openQuestions: 2, refusalContent: 'empty', externalRequests: externalRequests.length, consoleErrors: errors.length, screenshots: output }, null, 2));
+    console.log(JSON.stringify({ status: 'passed', nativeTabPause: headed, downloadedColumns: Object.keys(row).length, itemCount: 40, dailyQuestions: 6, openQuestions: 2, refusalContent: 'empty', externalRequests: externalRequests.length, consoleErrors: errors.length, screenshots: output }, null, 2));
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

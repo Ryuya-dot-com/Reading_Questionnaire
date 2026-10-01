@@ -8,6 +8,7 @@
   const byId = Object.fromEntries(data.items.map(item => [item.id, item]));
   const preview = config.mode === "preview";
   let state = { stage: "welcome" };
+  let itemTimer = null;
   let fileUrl = "", fileName = "";
   const escape = value => String(value ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const checked = value => value ? " checked" : "";
@@ -42,20 +43,23 @@
     input.addEventListener("change", update); update();
   }
   function progress() {
-    const shown = ["background", "daily", "practice", "questions", "open", "review"].includes(state.stage);
+    const shown = ["background", "daily", "practice", "questions", "open", "review", "done"].includes(state.stage) && !(state.stage === "done" && state.researchUseProhibited);
     document.querySelector("#progress-area").hidden = !shown;
     if (!shown) return;
     const answered = Object.values(state.answers).filter(value => core.validResponses.has(value)).length;
-    document.querySelector("#progress").value = answered;
-    document.querySelector("#progress-text").textContent = `気持ちの質問 ${answered} / ${data.items.length} 項目`;
-    const labels = { background: "あなたについて", daily: "日常の英語使用", practice: "回答のしかた", open: "自由記述（任意）", review: "回答の確認" };
-    document.querySelector("#step-label").textContent = labels[state.stage] || `${state.page + 1} / ${state.pages.length} ページ`;
+    const { total, position, percent } = core.progressState(state, data.items.length);
+    const bar = document.querySelector("#progress"); bar.max = total; bar.value = position;
+    bar.setAttribute("aria-valuetext", `全体の進捗 ${percent}%`);
+    document.querySelector("#progress-text").textContent = `全体の進捗 ${percent}%`;
+    document.querySelector("#progress-detail").textContent = state.stage === "done" ? "すべての画面が完了しました" : `画面 ${position + 1} / ${total} · 気持ちの質問 ${answered} / ${data.items.length} 項目を選択済み`;
+    const labels = { background: "あなたについて", daily: "日常の英語使用", practice: "回答のしかた", open: "自由記述（任意）", review: "回答の確認", done: "完了" };
+    document.querySelector("#step-label").textContent = labels[state.stage] || (state.pages[state.page].language === "ja" ? "日本語を読むときの気持ち" : "英語を読むときの気持ち");
   }
   function welcome() {
-    app.innerHTML = `<div class="hero"><p class="eyebrow">READING EXPERIENCE SURVEY</p><h1>英語を読むとき、<br>どんな気持ちになりますか。</h1><p class="lead">英語を読むときに困ること・不安に思うことについて，あなたがどのように感じているのかを尋ねます。あわせて，英語を読む楽しさや日常の英語使用についてもお聞きします。</p><p class="quiet">英語力を判定するテストではありません。正解も不正解もありません。</p><div class="facts"><span>気持ちの質問 <strong>32</strong>項目 ＋ 確認1項目</span><span>学習経験など12項目・自由記述2項目</span><span><strong>12–18</strong>分程度（目安）</span></div></div>
+    app.innerHTML = `<div class="hero"><p class="eyebrow">READING EXPERIENCE SURVEY</p><h1>英語を読むとき、<br>どんな気持ちになりますか。</h1><p class="lead">英語を読むときに困ること・不安に思うことについて，あなたがどのように感じているのかを尋ねます。あわせて，英語を読む楽しさや日常の英語使用，母語である日本語を読むときの気持ちもお聞きします。</p><p class="quiet">英語力・日本語力を判定するテストではありません。正解も不正解もありません。</p><div class="facts"><span>英語の気持ち32項目・日本語の気持ち7項目 ＋ 確認1項目</span><span>学習経験など12項目・自由記述2項目</span><span><strong>15–20</strong>分程度（目安）</span></div></div>
       <section class="card"><h2>参加する前に</h2><p>日本語を母語とする，18歳以上の英語学習者を対象としています。日本語が複数の母語の一つである方も含みます。</p><ul class="list"><li>参加は自由です。回答したくない項目は「回答しない」を選べます。背景・日常の英語使用・自由記述は空欄のまま進めます。</li><li><strong>アンケートの結果によって成績が下がることはありません。</strong>参加しないこと，途中で中止すること，データの利用を禁止することによる不利益もありません。</li><li><strong>アンケート結果を個人が特定されるような形式で公開することはありません。</strong>自由記述を紹介する場合も，個人が特定される情報を除くなどの対応をします。</li><li>気持ちについて考えることで負担を感じた場合は，いつでも中止できます。</li><li>氏名・学籍番号は尋ねません。ただし，LMS等への提出時には提出者が分かる場合があります。</li><li>回答はページを開いている間だけ保持します。再読み込みや終了で消えるため，最後にCSVを保存してください。この画面からの自動送信はありません。</li></ul>
       ${preview ? '<div class="notice"><strong>現在は動作確認用の試作版です。</strong><br>研究の募集は行っていません。出力CSVには「preview」と記録します。研究責任者・問い合わせ先・データの保管や撤回の説明は，本調査の開始前に設定します。試したCSVは本調査の回答として提出しないでください。</div>' : `<p>研究責任者：${escape(config.researcher)}<br>所属：${escape(config.affiliation)}<br>問い合わせ先：${escape(config.contact)}</p><p>${escape(config.ethicsStatement)}</p><p>データの保管・利用：${escape(config.retentionStatement)}</p><p>提出後の撤回：${escape(config.withdrawalStatement)}</p>`}
-      <p class="quiet">サイトの配信にはGitHub Pagesを利用しています。アクセス情報は配信サービス側で処理されます。アンケートの回答にアクセス情報を追加することはありません。</p></section>
+      <p>気持ちの質問は1画面ずつ表示します。質問の順序と，項目ごとの回答時間・表示回数・回答変更回数・計時中断回数をCSVに記録します。別のタブやウィンドウに移っている間は項目の計時を止めます。回答を急ぐ必要はありません。</p><p class="quiet">サイトの配信にはGitHub Pagesを利用しています。アクセス情報は配信サービス側で処理されます。アンケートの回答にアクセス情報を追加することはありません。</p></section>
       <form id="consent-form" class="card"><h2>${preview ? "試作版を試す" : "参加の確認"}</h2>
       <label class="consent-check"><input type="checkbox" name="age" required><span>18歳以上です。</span></label>
       <label class="consent-check"><input type="checkbox" name="language" required><span>日本語が母語で，英語を学んでいます。</span></label>
@@ -67,6 +71,7 @@
       const prohibited = state.researchUseProhibited;
       if (!prohibited && !document.querySelector("#consent-form").reportValidity()) return;
       state = { stage: "background", id: `rq-${crypto.randomUUID()}`, consentedAt: new Date().toISOString(), startedClock: performance.now(), initialResearchConsent: !prohibited, researchUseProhibited: prohibited, pages: prohibited ? [] : core.makePages(data.items), page: 0, answers: {}, background: {}, daily: {}, openResponses: {}, practiceAnswer: "" };
+      itemTimer = prohibited ? null : core.createItemTimer();
       if (prohibited) complete(); else render();
     });
   }
@@ -129,7 +134,7 @@
     return `<div class="likert">${data.choices.map(([value, label]) => `<label class="option"><input type="radio" name="${name}" value="${value}"${checked(selected === value)}><span><b>${value}</b>${label}</span></label>`).join("")}</div>`;
   }
   function practice() {
-    app.innerHTML = `<h2>回答のしかた</h2><p class="lead">これから，自分にどのくらい当てはまるかを1〜5から選んでいただきます。数字が大きいほど「よく当てはまる」を表します。</p><fieldset class="question"><legend>回答例：私は，夏より冬が好きだ。</legend>${likert("practice", state.practiceAnswer)}</fieldset><p class="quiet">とてもよく当てはまると感じたら「5」，まったく当てはまらないと感じたら「1」，どちらともいえない場合は「3」を選びます。正解はありません。</p><div class="notice">この例は操作を試すためのものです。選ばずに進んでも構いません。練習の回答は保存・分析しません。本番では「回答しない」や「経験がなく判断できない」も選べます。</div><div class="actions">${button("back", "← 戻る", true)}${button("next", "質問をはじめる →")}</div>${quitButton()}`;
+    app.innerHTML = `<h2>回答のしかた</h2><p class="lead">これから，自分にどのくらい当てはまるかを1〜5から選んでいただきます。数字が大きいほど「よく当てはまる」を表します。</p><p class="quiet">英語と日本語の質問は，それぞれまとまって表示されます。画面に示された言語についてお答えください。選択後に「次へ」で進みます。自動では切り替わりません。</p><fieldset class="question"><legend>回答例：私は，夏より冬が好きだ。</legend>${likert("practice", state.practiceAnswer)}</fieldset><p class="quiet">とてもよく当てはまると感じたら「5」，まったく当てはまらないと感じたら「1」，どちらともいえない場合は「3」を選びます。正解はありません。</p><div class="notice">この例は操作を試すためのものです。選ばずに進んでも構いません。練習の回答は保存・分析しません。本番では「回答しない」や「経験がなく判断できない」も選べます。</div><p class="quiet">上の進捗バーは画面数を基準にしています。残り時間の予測ではありません。前の画面に戻ると進捗も戻ります。</p><div class="actions">${button("back", "← 戻る", true)}${button("next", "質問をはじめる →")}</div>${quitButton()}`;
     for (const input of app.querySelectorAll('[name="practice"]')) input.addEventListener("change", event => { state.practiceAnswer = event.target.value; });
     on("back", () => { state.stage = "daily"; render(); });
     on("next", () => { state.stage = "questions"; state.page = 0; render(); });
@@ -140,11 +145,14 @@
   }
   function questions() {
     const page = state.pages[state.page];
-    const offset = state.pages.slice(0, state.page).reduce((n, p) => n + p.ids.length, 0);
-    app.innerHTML = `<h2>英語を読むときの気持ち</h2><p class="lead">特定の授業だけでなく，ふだん英語の文章を読むときのことを思い浮かべてください。それぞれの文について，最もよく当てはまるものを選んでください。</p><p class="quiet">授業場面の項目では授業の経験を思い浮かべてください。経験がなく判断できない場合は，無理に想像する必要はありません。</p><div id="questions">${page.ids.map((id, i) => questionCard(id, offset + i + 1)).join("")}</div>${errorBox()}<div class="actions">${button("back", "← 戻る", true)}${button("next", state.page === state.pages.length - 1 ? "自由記述へ →" : "次へ →")}</div>${quitButton()}`;
+    const language = page.language === "ja" ? "日本語" : "英語";
+    const blockPages = state.pages.filter(p => p.language === page.language);
+    const blockPosition = blockPages.indexOf(page) + 1;
+    app.innerHTML = `<h2>${language}を読むときの気持ち</h2><p class="language-label">${language}について · ${blockPosition} / ${blockPages.length} 項目</p><p class="lead">${blockPosition === 1 ? `ここからは${language}の読解についてお聞きします。` : ""}ふだん${language}の文章を読むときの自分に，最もよく当てはまるものを選んでください。</p>${byId[page.ids[0]].dimension === "classroom" ? '<p class="quiet">この項目では授業の経験を思い浮かべてください。経験がなく判断できない場合は，無理に想像する必要はありません。</p>' : ""}<div id="questions">${questionCard(page.ids[0], state.page + 1)}</div>${errorBox()}<div class="actions">${button("back", "← 戻る", true)}${button("next", state.page === state.pages.length - 1 ? "自由記述へ →" : "次へ →")}</div>${quitButton()}`;
     document.querySelector("#questions").addEventListener("change", event => {
       const input = event.target;
       if (!byId[input.name] || !core.validResponses.has(input.value)) return;
+      itemTimer?.respond(input.name, input.value);
       state.answers[input.name] = input.value;
       input.closest("fieldset").classList.remove("invalid");
       const remaining = page.ids.filter(id => !core.validResponses.has(state.answers[id])).length;
@@ -178,13 +186,16 @@
   }
   function complete() {
     try {
+      itemTimer?.end();
+      state.timings = itemTimer?.snapshot() || {};
       state.completedAt = new Date().toISOString();
       state.elapsedSeconds = (performance.now() - state.startedClock) / 1000;
       const csv = core.toCsv([core.buildRecord(config, data, state)]);
       if (fileUrl) URL.revokeObjectURL(fileUrl);
       fileUrl = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
       fileName = `reading_${config.mode}_${state.researchUseProhibited ? "no_use_" : ""}${state.id}.csv`;
-      if (state.researchUseProhibited) { state.answers = {}; state.background = {}; state.daily = {}; state.openResponses = {}; state.practiceAnswer = ""; state.pages = []; }
+      if (state.researchUseProhibited) { state.answers = {}; state.background = {}; state.daily = {}; state.openResponses = {}; state.practiceAnswer = ""; state.pages = []; state.timings = {}; }
+      itemTimer = null;
       state.stage = "done"; render(); document.querySelector("#download").click();
     } catch (error) { fail(`CSVを作成できませんでした。${error.message} 回答はこの画面に保持しています。`); }
   }
@@ -193,12 +204,18 @@
     app.innerHTML = `<div class="hero"><div class="check-icon" aria-hidden="true">✓</div><h1>${prohibited ? "データを利用しない意思を記録しました。" : "回答が完了しました。"}</h1><p class="lead">CSVファイルのダウンロードを開始しました。端末のダウンロード一覧または「ファイル」アプリで保存を確認してください。</p>${prohibited ? '<div class="notice">CSVには質問への回答内容・得点・自由記述を含めていません。画面内の回答内容も消去しました。このファイルは利用不可の意思を伝えるための記録です。</div>' : ""}</div><section class="card"><h2>ファイルを確認してください</h2><p class="filename">${escape(fileName)}</p><p class="quiet">保存画面が開く場合は保存先を指定してください。保存されていない場合は，同じCSVをもう一度保存できます。</p><p><a id="download" class="button" href="${fileUrl}" download="${escape(fileName)}">CSVをもう一度保存 ↓</a></p><p class="quiet">Excelで日本語を読みやすい形式（UTF-8 BOM付き）です。</p></section><section class="card"><h2>${preview ? "動作確認はここまでです" : prohibited ? "必要に応じて利用不可の記録を提出してください" : "最後に，CSVを提出してください"}</h2><p>${preview ? "これは試作版の記録です。研究データとして提出せず，保存できることをご確認ください。" : escape(config.submissionInstructions)}</p>${preview ? "" : submissionLink()}${prohibited ? '<p class="quiet">既に回答CSVを提出した場合は，そのファイルの回答者IDとともに研究責任者へ連絡してください。別の回に作成したIDとは自動照合できません。</p>' : ""}<p class="quiet">このページには提出完了を確認する機能はありません。</p></section><p class="quiet">このアンケートは，個人の不安を診断したり，英語力を判定したりするものではありません。</p><button type="button" class="text-button" id="clear">画面内の記録を消去して終了する</button>`;
     on("clear", reset);
   }
-  function reset() { if (fileUrl) URL.revokeObjectURL(fileUrl); fileUrl = ""; fileName = ""; state = { stage: "welcome" }; render(); }
+  function reset() { itemTimer = null; if (fileUrl) URL.revokeObjectURL(fileUrl); fileUrl = ""; fileName = ""; state = { stage: "welcome" }; render(); }
   function render() {
+    itemTimer?.end();
     ({ welcome, background, daily, practice, questions, open, review, done })[state.stage](); progress();
     on("quit", () => { if (confirm("この画面内の回答を消去して中止します。よろしいですか？")) reset(); });
     focusTop();
+    if (state.stage === "questions") itemTimer?.begin(state.pages[state.page].ids[0], !document.hidden && document.hasFocus());
   }
+  const updateTimingVisibility = () => itemTimer?.setActive(!document.hidden && document.hasFocus());
+  document.addEventListener("visibilitychange", updateTimingVisibility);
+  window.addEventListener("focus", updateTimingVisibility);
+  window.addEventListener("blur", updateTimingVisibility);
   window.addEventListener("beforeunload", event => { if (!["welcome", "done"].includes(state.stage)) { event.preventDefault(); event.returnValue = ""; } });
   const configErrors = core.validateStudy(config);
   if (configErrors.length) { app.innerHTML = `<div class="notice"><h2>調査の準備中です</h2><p>設定が完了するまで回答を開始できません。</p><p class="quiet">設定項目：${escape(configErrors.join("、"))}</p></div>`; return; }
