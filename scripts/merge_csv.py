@@ -2,12 +2,18 @@
 """個別CSVを結合。利用不可の記録と同じIDの回答は、順序によらず必ず除外する。"""
 import argparse
 import csv
+import re
 from pathlib import Path
 
 ITEMS = [f"A{i:02}" for i in range(1, 24)] + [f"B{i:02}" for i in range(1, 10)] + ["AC01"]
 L1_ITEMS = [f"J{i:02}" for i in range(1, 8)]
 TIMING_FIELDS = ["rt_first_ms", "active_ms", "visit_n", "change_n", "pause_n"]
 VALID = {"1", "2", "3", "4", "5", "NA", "SKIP"}
+
+
+def csv_text(value):
+    """提出前に編集されたCSVにも、ブラウザ出力と同じ数式対策を適用する。"""
+    return "'" + value if re.match(r"^[\s\ufeff]*[=+@-]|^[\t\r\n]", value) else value
 
 
 def merge(folder, output, include_preview=False):
@@ -82,9 +88,9 @@ def merge(folder, output, include_preview=False):
     if not records:
         raise ValueError(f"結合する回答がありません。除外した試作回答: {preview_count}件、利用不可ID: {len(prohibited_ids)}件。試作確認には --include-preview を指定します（利用不可IDは常に除外）。")
     with Path(output).open("x", encoding="utf-8-sig", newline="") as stream:
-        writer = csv.DictWriter(stream, fieldnames=headers, lineterminator="\r\n", quoting=csv.QUOTE_ALL)
-        writer.writeheader()
-        writer.writerows(records.values())
+        writer = csv.writer(stream, lineterminator="\r\n", quoting=csv.QUOTE_ALL)
+        writer.writerow([csv_text(column) for column in headers])
+        writer.writerows([csv_text(row[column]) for column in headers] for row in records.values())
     return len(records), duplicate_count, preview_count, len(prohibited_ids)
 
 

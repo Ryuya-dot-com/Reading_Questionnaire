@@ -51,6 +51,7 @@ function assertRefusal(row) {
     page.on('request', request => { if (!request.url().startsWith(new URL(base).origin) && !request.url().startsWith('blob:')) externalRequests.push(request.url()); });
     await page.goto(base);
     assert.match(await page.locator('#app').innerText(), /結果によって成績が下がることはありません/);
+    assert.match(await page.locator('#app').innerText(), /回答にかかった時間と操作の記録/);
     assert.match(await page.locator('#app').innerText(), /個人が特定されるような形式で公開することはありません/);
     await page.screenshot({ path: path.join(output, 'desktop-welcome.png'), fullPage: true });
     assert.equal(await page.locator('[name=prohibit-use]:checked').count(), 0);
@@ -174,7 +175,19 @@ function assertRefusal(row) {
     await page.locator('#next').click(); await page.locator('#back').click();
     assert.equal(await page.locator('#free_reading_feelings').inputValue(), '長い英文は不安。でも物語は楽しい。');
     await page.locator('#next').click();
-    await page.locator('#prohibit-use-yes').check(); await page.locator('#prohibit-use-no').check();
+    assert.match(await page.locator('.review-identity').innerText(), /001234/);
+    await page.locator('#prohibit-use-yes').check();
+    await page.locator('#edit-background').click();
+    assert.equal(await page.locator('[name=student_id]').inputValue(), '001234');
+    await page.locator('[name=student_id]').fill('001234A');
+    await page.locator('#next').click();
+    assert.equal(await page.locator('#complete').count(), 1);
+    assert.ok(await page.locator('#prohibit-use-yes').isChecked());
+    assert.match(await page.locator('.review-identity').innerText(), /001234A/);
+    await page.locator('#edit-background').click();
+    await page.locator('[name=student_id]').fill('001234');
+    await page.locator('#next').click();
+    await page.locator('#prohibit-use-no').check();
     await page.screenshot({ path: path.join(output, 'desktop-review.png'), fullPage: true });
     const first = await downloadRow(page, '#complete'); const row = first.row;
     for (const item of data.items) assert.equal(row[item.id], expected[item.id]);
@@ -214,7 +227,7 @@ function assertRefusal(row) {
     const early = await downloadRow(page, '#start', 'early-refusal.csv');
     assertRefusal(early.row); assert.equal(early.row.consent, 'no'); assert.ok(early.filename.includes('no_use'));
 
-    const mobile = await context.newPage(); await mobile.setViewportSize({ width: 375, height: 812 });
+    const mobile = await context.newPage(); await mobile.setViewportSize({ width: 320, height: 812 });
     await mobile.goto(base); await mobile.screenshot({ path: path.join(output, 'mobile-welcome.png'), fullPage: true });
     await start(mobile);
     assert.ok(await mobile.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
@@ -228,6 +241,22 @@ function assertRefusal(row) {
     await mobile.locator('#next').click();
     assert.ok(await mobile.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     await mobile.screenshot({ path: path.join(output, 'mobile-questions.png'), fullPage: true });
+    await mobile.locator('.question input[type=radio]').first().focus();
+    await mobile.keyboard.press('ArrowRight');
+    assert.equal(await mobile.locator('.question input:checked').inputValue(), '2');
+    await mobile.keyboard.press('Tab');
+    assert.equal(await mobile.evaluate(() => document.activeElement.id), 'back');
+    await mobile.keyboard.press('Tab');
+    assert.equal(await mobile.evaluate(() => document.activeElement.id), 'next');
+    await mobile.keyboard.press('Enter');
+    for (let i = 1; i < data.items.length; i++) {
+      await mobile.locator('.question input[value=SKIP]').check(); await mobile.locator('#next').click();
+    }
+    await mobile.locator('#next').click();
+    await mobile.locator('summary').click();
+    assert.ok(await mobile.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await mobile.locator('summary').click();
+    await mobile.screenshot({ path: path.join(output, 'mobile-review.png'), fullPage: true });
     mobile.on('dialog', dialog => dialog.accept()); await mobile.locator('#quit').click();
 
     const blocked = await context.newPage();

@@ -58,7 +58,7 @@
   }
   function welcome() {
     app.innerHTML = `<div class="hero"><p class="eyebrow">READING EXPERIENCE SURVEY</p><h1>英語を読むとき、<br>どんな気持ちになりますか。</h1><p class="lead">英語を読むときに困ること・不安に思うことについて，あなたがどのように感じているのかを尋ねます。あわせて，英語を読む楽しさや日常の英語使用，母語である日本語を読むときの気持ちもお聞きします。</p><p class="quiet">英語力・日本語力を判定するテストではありません。正解も不正解もありません。</p><div class="facts"><span>英語の気持ち32項目・日本語の気持ち7項目 ＋ 確認1項目</span><span>学習経験など12項目・自由記述2項目</span><span><strong>15–20</strong>分程度（目安）</span></div></div>
-      <section class="card"><h2>参加する前に</h2><p>日本語を母語とする，18歳以上の英語学習者を対象としています。日本語が複数の母語の一つである方も含みます。</p><ul class="list"><li>参加は自由です。回答したくない項目は「回答しない」を選べます。背景・日常の英語使用・自由記述は空欄のまま進めます。</li><li><strong>アンケートの結果によって成績が下がることはありません。</strong>参加しないこと，途中で中止すること，データの利用を禁止することによる不利益もありません。</li><li><strong>アンケート結果を個人が特定されるような形式で公開することはありません。</strong>自由記述を紹介する場合も，個人が特定される情報を除くなどの対応をします。</li><li>気持ちについて考えることで負担を感じた場合は，いつでも中止できます。</li><li>入力した氏名・学籍番号は，回答とともに記録します。</li><li>最後に回答ファイル（CSV）を保存し，指定された方法で提出してください。途中でページを閉じると，未保存の回答は消えます。</li></ul>
+      <section class="card"><h2>参加する前に</h2><p>日本語を母語とする，18歳以上の英語学習者を対象としています。日本語が複数の母語の一つである方も含みます。</p><ul class="list"><li>参加は自由です。回答したくない項目は「回答しない」を選べます。背景・日常の英語使用・自由記述は空欄のまま進めます。</li><li><strong>アンケートの結果によって成績が下がることはありません。</strong>参加しないこと，途中で中止すること，データの利用を禁止することによる不利益もありません。</li><li><strong>アンケート結果を個人が特定されるような形式で公開することはありません。</strong>自由記述を紹介する場合も，個人が特定される情報を除くなどの対応をします。</li><li>気持ちについて考えることで負担を感じた場合は，いつでも中止できます。</li><li>入力した氏名・学籍番号，回答内容，回答にかかった時間と操作の記録を保存します。回答を急ぐ必要はありません。</li><li>最後に回答ファイル（CSV）を保存し，指定された方法で提出してください。途中でページを閉じると，未保存の回答は消えます。</li></ul>
       ${preview ? "" : `<div class="study-details"><h3>本調査の実施者・問い合わせ先</h3><p>研究責任者：${escape(config.researcher)}<br>所属：${escape(config.affiliation)}<br>お問い合わせ・データ利用の撤回：${escape(config.contact)}</p><p class="quiet">本調査についてのご質問や，提出後のデータ利用の取りやめは，上記の窓口へお問い合わせください。</p></div><p>${escape(config.ethicsStatement)}</p><p>データの保管・利用：${escape(config.retentionStatement)}</p><p>提出後の撤回：${escape(config.withdrawalStatement)}</p>`}
       </section>
       <form id="consent-form" class="card"><h2>参加の確認</h2>
@@ -78,11 +78,11 @@
     });
   }
   function background() {
-    app.innerHTML = `<h2>あなたについて</h2><p class="lead">すべて任意です。答えたくない質問は，そのまま次へ進めます。</p><form id="background-form" class="card"><div class="fields"><label class="field">氏名（任意）<input type="text" name="participant_name" maxlength="100" autocomplete="off" value="${escape(state.background.participant_name)}"></label><label class="field">学籍番号（任意）<input type="text" name="student_id" maxlength="80" autocomplete="off" spellcheck="false" value="${escape(state.background.student_id)}"></label>${data.background.map(field => selectField(field, state.background)).join("")}</div></form><div class="actions"><span class="quiet">次は，日常の英語使用についてです。</span>${button("next", "次へ →")}</div>${quitButton()}`;
+    app.innerHTML = `<h2>あなたについて</h2><p class="lead">すべて任意です。答えたくない質問は，そのまま次へ進めます。</p><form id="background-form" class="card"><div class="fields"><label class="field">氏名（任意）<input type="text" name="participant_name" maxlength="100" autocomplete="off" value="${escape(state.background.participant_name)}"></label><label class="field">学籍番号（任意）<input type="text" name="student_id" maxlength="80" autocomplete="off" spellcheck="false" value="${escape(state.background.student_id)}"></label>${data.background.map(field => selectField(field, state.background)).join("")}</div></form><div class="actions"><span class="quiet">${state.returnToReview ? "入力内容を確認して，回答の確認へ戻ります。" : "次は，日常の英語使用についてです。"}</span>${button("next", state.returnToReview ? "確認に戻る →" : "次へ →")}</div>${quitButton()}`;
     const form = document.querySelector("#background-form");
     form.addEventListener("submit", event => event.preventDefault());
     form.addEventListener("input", event => { state.background[event.target.name] = event.target.value; });
-    on("next", () => { state.background = Object.fromEntries(new FormData(form)); state.stage = "daily"; render(); });
+    on("next", () => { state.background = Object.fromEntries(new FormData(form)); state.stage = state.returnToReview ? "review" : "daily"; state.returnToReview = false; render(); });
   }
   function daily() {
     const values = state.daily;
@@ -181,8 +181,9 @@
   function review() {
     const actual = data.items.filter(item => item.dimension !== "attention");
     const count = value => actual.filter(item => state.answers[item.id] === value).length;
-    app.innerHTML = `<h2>回答を確認して，CSVを保存</h2><p class="lead">保存前に回答を確認できます。変更する場合は「戻る」から前の画面へ移動してください。</p><div class="summary"><div><strong>${actual.filter(item => /^[1-5]$/.test(state.answers[item.id])).length}</strong><span class="quiet">1〜5の回答</span></div><div><strong>${count("NA")}</strong><span class="quiet">判断できない</span></div><div><strong>${count("SKIP")}</strong><span class="quiet">回答しない</span></div></div><details><summary>気持ちの質問への回答を表示</summary><table class="review-table"><tbody>${state.pages.flatMap(page => page.ids).map(id => `<tr><th scope="row">${escape(byId[id].text)}</th><td>${escape(responseLabel(state.answers[id]))}</td></tr>`).join("")}</tbody></table></details>${useControl()}<div class="notice">${escape(config.submissionInstructions)}<br>保存しただけでは，研究者に回答は届きません。</div>${errorBox()}<div class="actions">${button("back", "← 戻る", true)}${button("complete", "回答を完了してCSVを保存 ↓")}</div>${quitButton()}`;
+    app.innerHTML = `<h2>回答を確認して，CSVを保存</h2><p class="lead">保存前に回答を確認できます。変更する場合は「戻る」から前の画面へ移動してください。</p><section class="card review-identity"><h3>氏名・学籍番号</h3><p>氏名：${escape(state.background.participant_name || "未入力")}<br>学籍番号：${escape(state.background.student_id || "未入力")}</p>${button("edit-background", "氏名・学籍番号などを修正する", true)}</section><div class="summary"><div><strong>${actual.filter(item => /^[1-5]$/.test(state.answers[item.id])).length}</strong><span class="quiet">1〜5の回答</span></div><div><strong>${count("NA")}</strong><span class="quiet">判断できない</span></div><div><strong>${count("SKIP")}</strong><span class="quiet">回答しない</span></div></div><details><summary>気持ちの質問への回答を表示</summary><table class="review-table"><tbody>${state.pages.flatMap(page => page.ids).map(id => `<tr><th scope="row">${escape(byId[id].text)}</th><td>${escape(responseLabel(state.answers[id]))}</td></tr>`).join("")}</tbody></table></details>${useControl()}<div class="notice">${escape(config.submissionInstructions)}<br>保存しただけでは，研究者に回答は届きません。</div>${errorBox()}<div class="actions">${button("back", "← 戻る", true)}${button("complete", "回答を完了してCSVを保存 ↓")}</div>${quitButton()}`;
     bindUseControl("complete");
+    on("edit-background", () => { state.returnToReview = true; state.stage = "background"; render(); });
     on("back", () => { state.stage = "open"; render(); });
     on("complete", complete);
   }

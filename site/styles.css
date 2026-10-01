@@ -79,6 +79,8 @@ input[type=text] { background:#fff; border:1px solid #9eafa4; border-radius:6px;
 .summary { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin:24px 0; }
 .summary div { border-left:2px solid var(--line); padding-left:16px; }
 .summary strong { display:block; font-size:27px; font-family:Georgia,serif; }
+.review-identity { overflow-wrap:anywhere; }
+.review-identity button { max-width:100%; }
 .review-table { border-collapse:collapse; width:100%; font-size:14px; margin:18px 0; }
 .review-table td,.review-table th { padding:12px 8px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
 .review-table td:last-child { min-width:125px; }
@@ -96,7 +98,7 @@ summary { cursor:pointer; font-weight:600; }
   .likert { grid-template-columns:1fr 1fr; } .likert .option:last-child { grid-column:1/-1; }
   .option span { min-height:69px; flex-direction:row; gap:10px; padding:10px; }
   .option b { font-size:17px; } .actions > button,.actions > .button { flex:1; }
-  .actions > .quiet { flex-basis:100%; }
+  .actions > .quiet,#complete { flex-basis:100%; }
   .facts { gap:9px 20px; font-size:13px; } .site-footer { padding:24px 20px; }
 }
 .skip-link { position:absolute; top:-100px; left:10px; background:#fff; padding:10px; z-index:5; }

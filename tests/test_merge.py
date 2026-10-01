@@ -46,6 +46,18 @@ class MergeTest(unittest.TestCase):
             module.merge(self.raw, existing)
         self.assertEqual(existing.read_text(), "keep")
 
+    def test_edited_csv_formula_prefixes_are_neutralized_without_double_escaping(self):
+        values = ['=1+1', '+1', '-1', '@SUM(A1)', '  =1', '\ufeff=1', '\tplain', '\rplain', '\nplain', "'=1+1", '001234', '山田 テスト']
+        row = {**self.row, **{f"text_{i}": value for i, value in enumerate(values)}, '=extra_header': 'plain'}
+        self.write("edited.csv", row)
+        output = self.root / "all.csv"
+        module.merge(self.raw, output)
+        with output.open(encoding="utf-8-sig", newline="") as file:
+            result = next(csv.DictReader(file))
+        for i, value in enumerate(values):
+            self.assertEqual(result[f"text_{i}"], "'" + value if i < 9 else value)
+        self.assertEqual(result["'=extra_header"], 'plain')
+
     def test_preview_excluded_unless_requested(self):
         self.write("one.csv", {**self.row, "data_mode": "preview"})
         with self.assertRaisesRegex(ValueError, "結合する回答がありません"):
