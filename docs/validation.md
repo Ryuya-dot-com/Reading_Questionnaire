@@ -2,6 +2,8 @@
 
 実施日：2026年10月1日。対象：質問紙版 `2026-10-01.1`。
 
+公開実装コミット：`a47036a`。[GitHub Actionsの公開処理](https://github.com/Ryuya-dot-com/Reading_Questionnaire/actions/runs/36854142124)は成功。[公開URL](https://ryuya-dot-com.github.io/Reading_Questionnaire/)でも下記のChrome操作テストを実行し、33項目・72列のCSV保存、再保存、モバイル幅の表示、エラー0件を確認した。公開サイトはpreviewのままである。
+
 ## 自動検証
 
 | 対象 | 実施内容 | 結果 |
