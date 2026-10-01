@@ -1,0 +1,8 @@
+.DS_Store
+node_modules/
+tmp/
+responses/
+*.csv
+*.pdf
+test-results/
+__pycache__/
