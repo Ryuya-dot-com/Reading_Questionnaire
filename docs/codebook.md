@@ -1,6 +1,12 @@
 # CSVコードブック
 
-質問紙版：2026-10-01.1。1回答者1行のwide形式。ファイル先頭はUTF-8 BOM、行末はCRLFです。列名は解析しやすいASCII、自由記述は日本語のまま保存します。
+質問紙版・同意版：2026-10-01.2。CSVスキーマ2、85列、1回答者1行のwide形式。ファイル先頭はUTF-8 BOM、行末はCRLFです。列名は解析しやすいASCII、自由記述は日本語のまま保存します。
+
+## 最初に確認する利用意思
+
+分析対象は `record_type=response` かつ `research_use_allowed=yes` かつ `consent=yes` の本調査回答です。`data_mode=preview` は動作確認用であり、研究には使用しません。
+
+`record_type=refusal` かつ `research_use_allowed=no` は利用不可の管理記録です。この場合、`schema_version`、`study_id`、`instrument_version`、`consent_version`、`data_mode`、`response_id`、`record_type`、`research_use_allowed`、`consent` の9列以外はすべて空欄です。空欄を通常の欠測回答として扱わず、研究分析から除外します。結合スクリプトは同じIDの回答も入力順によらず除外します。既存ファイルや分析結果の削除は研究者側の対応が別途必要です。
 
 ## 回答値と欠測
 
@@ -12,33 +18,34 @@
 - NA = 経験がなく判断できない
 - SKIP = 回答しない
 
-未選択のまま完了はできませんが、SKIPを選択して回答を辞退できます。NA/SKIPを0または3に変換しないでください。背景の未回答はSKIP、任意のTOEIC得点・年月およびコメントの未入力は空欄です。
+33の気持ち・確認項目は未選択のまま完了できませんが、SKIPを選択して回答を辞退できます。NA/SKIPを0または3に変換しないでください。背景・日常の英語使用の未選択はSKIP、条件付きの得点・年月・合格級・補足記述と自由記述2項目の未入力は空欄です。資格試験や文章の種類の「なし」は明示的な `none` で、未回答とは区別します。
 
 ## 記録列
 
 | 列名 | 定義 |
 | --- | --- |
-| `schema_version` | CSV列構成の版。現在は1。 |
+| `schema_version` | CSV列構成の版。現在は2。旧版の1とは列構成が異なる。 |
 | `study_id` | 調査識別子。 |
 | `instrument_version` | 項目・教示・実施方法・得点化の版。 |
 | `consent_version` | 説明・同意文の版。 |
 | `data_mode` | preview=動作確認、live=本調査。混ぜて分析しない。 |
 | `response_id` | 端末で生成するrq-UUID。再ダウンロード時は同じID。別セッションの重複参加は検出しない。 |
-| `consent` | yes=開始時に確認にチェック。previewのチェックは研究参加の同意を意味しない。 |
+| `record_type` | response=回答記録、refusal=利用不可の管理記録。 |
+| `research_use_allowed` | yes=利用禁止を選択していない、no=利用禁止。previewのyesは本調査での使用許可を意味しない。 |
+| `consent` | yes=開始説明を確認し、同意ボタンで開始（previewでは動作確認）、no=開始前から利用禁止、withdrawn=開始後・完了前に利用禁止。 |
 | `eligibility_japanese_l1` | yes=日本語母語（複数母語を含む）の自己確認。 |
 | `eligibility_english_learner` | yes=英語学習者の自己確認。 |
 | `eligibility_age_18plus` | yes=18歳以上の自己確認。 |
 | `consented_at_utc` | 開始確認時刻。ISO 8601のUTC（末尾Z）。端末時計による。 |
 | `completed_at_utc` | 回答完了操作時刻。ISO 8601のUTC。端末時計による。 |
 | `elapsed_seconds` | 開始から完了までの経過秒。背景入力・中断を含む。読解時間ではない。 |
-| `toeic_lr_reading` | 任意の自己申告TOEIC L&R Reading得点。5〜495、5点刻み。空欄=未入力。総合点・Bridgeとは混ぜない。 |
-| `toeic_test_month` | 該当得点の受験年月。YYYY-MM。空欄=不明・未入力。 |
 | `presentation_order` | 実際の項目提示順。項目IDを縦棒で連結。回答ページへ戻っても順番は同じ。 |
 | `scored_response_n` | 32尺度項目のうち1〜5を選んだ数。注意確認AC01を除く。 |
 | `not_applicable_n` | NAの数。33項目（AC01を含む）。 |
 | `skipped_n` | SKIPの数。33項目（AC01を含む）。 |
 | `attention_check` | pass=AC01が2、flag=1/3/4/5、missing=NA/SKIP。自動除外の指示ではない。 |
-| `feedback` | 自由記述（最大500文字）。式として解釈されうる先頭文字にはアポストロフィを付ける。原文の引用符・コンマ・改行はCSV規則で保持。 |
+
+質問紙への経過時間には、背景・日常の英語使用・練習・自由記述の入力と中断を含みます。練習例の回答は列を設けず、保存・得点化しません。旧版の画面へのコメント `feedback` は削除し、下記の自由記述2列に変更しました。
 
 ## 任意の背景項目
 
@@ -50,6 +57,38 @@
 | `reading_frequency` | 最近1か月で英語の文章を読む頻度（授業を含む） | `rarely`=ほとんど読まない / `monthly`=月に数日 / `weekly_1_2`=週に1〜2日 / `weekly_3_4`=週に3〜4日 / `weekly_5_plus`=週に5日以上 / `SKIP`=回答しない |
 | `reading_self_rating` | 自分の英語の読解力についての評価 | `1`=とても低いと思う / `2`=やや低いと思う / `3`=どちらともいえない / `4`=やや高いと思う / `5`=とても高いと思う / `SKIP`=回答しない |
 | `classroom_experience` | 英語の授業を受けた経験 | `current`=現在受けている / `past`=以前受けていた / `none`=受けたことがない / `SKIP`=回答しない |
+
+## 日常の英語使用（6項目、すべて任意）
+
+資格試験の詳細と複数選択の補足を別列にしたため、この6問は12列に対応します。頻度・時間・読むものは最近1か月の生活を目安に回答します。背景の `reading_frequency` は授業を含み、下記の `extra_reading_frequency` は授業・課題外です。
+
+| 列名 | 内容・値 |
+| --- | --- |
+| `exam_types` | 受験したことのある試験。`toeic_lr` / `eiken` / `other` の複数選択を `|` で連結。`none`=受験したことがない、`SKIP`=未選択。noneは他と併用不可。 |
+| `toeic_lr_total` | 最新のTOEIC L&R合計点。10〜990、5点刻み。最高点ではない。空欄=未入力またはTOEIC非選択。 |
+| `toeic_lr_reading` | 同じ回のReading点。5〜495、5点刻み。合計点と同時入力した場合、差（Listening点）が5〜495になることも確認。空欄=未入力またはTOEIC非選択。 |
+| `toeic_test_month` | 上記の受験年月（YYYY-MM）。不明・未入力・TOEIC非選択は空欄。 |
+| `eiken_latest_passed_grade` | 最新の合格級。`1` / `pre_1` / `2` / `pre_2_plus` / `pre_2` / `3` / `4` / `5`、`no_pass`=合格した級なし、`unknown`=覚えていない。未回答・英検非選択は空欄。受験した級やCSE得点ではない。 |
+| `other_exam_details` | その他の試験名と最新スコア・級（任意、最大500文字）。その他非選択時は空欄。 |
+| `extra_reading_frequency` | 授業・課題外で読む頻度。`daily`=ほぼ毎日 / `weekly`=週に数回 / `monthly`=月に数回 / `rarely`=ほとんどない / `SKIP`。 |
+| `extra_reading_time` | 授業・課題外で読む1週間の時間。`none`=0分 / `under_30`=0分超30分未満 / `30_to_59`=30分以上1時間未満 / `60_to_179`=1時間以上3時間未満 / `180_plus`=3時間以上 / `SKIP`。境界を重複させない。連続量の分数として解析しない。 |
+| `reading_materials` | 授業以外で読む文章。`social`=SNS・ネット投稿 / `news`=ニュース・記事 / `fiction`=小説・多読本 / `academic`=専門の教科書・論文 / `games_video`=ゲーム・動画の字幕や説明 / `other`。複数選択を `|` で連結。`none`=読むものはない（他と併用不可）、`SKIP`=未選択。 |
+| `reading_materials_other` | その他の文章（任意、最大200文字）。その他非選択時は空欄。 |
+| `extensive_reading_experience` | 授業などで多読をした経験。`yes`=ある / `no`=ない / `unsure`=分からない・覚えていない / `SKIP`。 |
+| `english_country_stay_3months` | 英語圏への1回の連続した3か月以上の滞在経験。旅行・留学・居住を含み、複数回の合計ではない。`yes` / `no` / `unsure` / `SKIP`。 |
+
+複数選択は選んだ順序ではなく、画面の選択肢の定義順で出力します。未選択の条件付き欄に以前入力していた値は消去し、CSVには残しません。「その他」を選んで記述を空欄にすることはできます。資格試験の選択は受験経験、得点・合格級はその詳細なので区別して解釈します。異なる試験の得点や英検級を、根拠なく共通の英語力得点に変換しません。
+
+範囲の参照：[IIBCのTOEIC L&Rスコア説明](https://www.iibc-global.org/toeic/test/lr/guide04.html)、[英検の準2級プラスの案内](https://www.eiken.or.jp/eiken/2025newgrade/)（2025年度導入）。
+
+## 自由記述（2項目、任意）
+
+| 列名 | 質問 |
+| --- | --- |
+| `free_learning_experience` | これまでの英語学習で，楽しかったことや難しかったことがあれば，自由に書いてください。 |
+| `free_reading_feelings` | ふだん英語を読むときに，不安になることや楽しいと感じることがあれば，自由に書いてください。 |
+
+各最大2,000文字、空欄は未回答です。式として解釈されうる先頭文字にはCSV出力時にアポストロフィを付けます（その他の記述欄も同様）。原文の引用符・コンマ・改行はCSV規則で保持します。実装の文字数制限はブラウザの `maxlength` によるため、絵文字等は見かけの文字数と一致しない場合があります。自由記述を研究発表で引用する場合は、氏名以外にも授業・所属・経験の組合せ等から個人が特定されないか研究者が確認してください。
 
 ## 生回答列と日本語項目
 

@@ -82,3 +82,41 @@ test('本調査モードの必須説明が空欄なら開始できない', () =>
   for (const key of core.validateStudy(complete)) complete[key] = '設定済み';
   assert.deepEqual(core.validateStudy(complete), []);
 });
+test('利用不可CSVは回答内容・背景・自由記述・時刻・得点を一切出力しない', () => {
+  const s = state();
+  s.researchUseProhibited = true; s.initialResearchConsent = true;
+  s.background.age_group = '20_24';
+  s.daily = { exam_types: ['toeic_lr'], toeic_lr_total: '850' };
+  s.openResponses = { free_learning_experience: '保存されてはいけない内容' };
+  const record = core.buildRecord(globalThis.SURVEY_CONFIG, data, s);
+  assert.equal(record.research_use_allowed, 'no');
+  assert.equal(record.record_type, 'refusal');
+  assert.equal(record.consent, 'withdrawn');
+  const metadata = new Set(['schema_version', 'study_id', 'instrument_version', 'consent_version', 'data_mode', 'response_id', 'record_type', 'research_use_allowed', 'consent']);
+  for (const [key, value] of Object.entries(record)) if (!metadata.has(key)) assert.equal(value, '', key);
+  assert.deepEqual(Object.keys(record), Object.keys(core.buildRecord(globalThis.SURVEY_CONFIG, data, state())));
+  const early = core.buildRecord(globalThis.SURVEY_CONFIG, data, { researchUseProhibited: true, id: 'rq-refused' });
+  assert.equal(early.consent, 'no');
+  assert.equal(early.presentation_order, '');
+});
+test('複数選択・noneの排他性・解除した資格の詳細を正規化', () => {
+  const normalized = core.normalizeDaily(data, {
+    exam_types: ['eiken', 'toeic_lr', 'eiken'], toeic_lr_total: '850', eiken_latest_passed_grade: 'pre_2_plus', other_exam_details: '残してはいけない',
+    reading_materials: ['news', 'none'], reading_materials_other: '残してはいけない', extra_reading_time: '60_to_179'
+  });
+  assert.equal(normalized.exam_types, 'toeic_lr|eiken');
+  assert.equal(normalized.toeic_lr_total, '850');
+  assert.equal(normalized.other_exam_details, '');
+  assert.equal(normalized.reading_materials, 'none');
+  assert.equal(normalized.reading_materials_other, '');
+  const none = core.normalizeDaily(data, { exam_types: ['none', 'toeic_lr'], toeic_lr_total: '900' });
+  assert.equal(none.exam_types, 'none'); assert.equal(none.toeic_lr_total, '');
+});
+test('新しい自由記述2項目を保存し練習回答を保存しない', () => {
+  const s = state(); s.openResponses = { free_learning_experience: '楽しかった', free_reading_feelings: '不安もある' }; s.practiceAnswer = '5';
+  const record = core.buildRecord(globalThis.SURVEY_CONFIG, data, s);
+  assert.equal(record.schema_version, '2');
+  assert.equal(record.free_learning_experience, '楽しかった');
+  assert.equal(record.free_reading_feelings, '不安もある');
+  assert.ok(!Object.keys(record).some(key => key.includes('practice')));
+});

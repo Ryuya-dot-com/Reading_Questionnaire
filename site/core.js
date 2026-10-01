@@ -48,39 +48,68 @@
     return ["researcher", "affiliation", "contact", "ethicsStatement", "retentionStatement", "withdrawalStatement", "submissionInstructions"]
       .filter(key => !String(config[key] ?? "").trim());
   }
-  function buildRecord(config, data, state) {
-    const order = state.pages.flatMap(page => page.ids);
-    if (order.length !== data.items.length || new Set(order).size !== data.items.length || data.items.some(item => !order.includes(item.id))) throw new Error("提示順の整合性を確認できません。");
-    if (!data.items.every(item => validResponses.has(state.answers[item.id]))) throw new Error("未回答の項目があります。");
-    if (!state.consentedAt || !state.completedAt) throw new Error("回答完了時刻または同意記録がありません。");
+  function normalizeDaily(data, values = {}) {
+    function selections(key, options) {
+      const chosen = Array.isArray(values[key]) ? values[key] : [];
+      if (chosen.includes("none")) return ["none"];
+      return options.map(([value]) => value).filter(value => chosen.includes(value));
+    }
+    const exams = selections("exam_types", data.examTypes);
+    const materials = selections("reading_materials", data.readingMaterials);
+    const scalar = key => String(values[key] ?? "");
     return {
-      schema_version: "1",
+      exam_types: exams.join("|") || "SKIP",
+      toeic_lr_total: exams.includes("toeic_lr") ? scalar("toeic_lr_total") : "",
+      toeic_lr_reading: exams.includes("toeic_lr") ? scalar("toeic_lr_reading") : "",
+      toeic_test_month: exams.includes("toeic_lr") ? scalar("toeic_test_month") : "",
+      eiken_latest_passed_grade: exams.includes("eiken") ? scalar("eiken_latest_passed_grade") : "",
+      other_exam_details: exams.includes("other") ? scalar("other_exam_details") : "",
+      ...Object.fromEntries(data.daily.map(field => [field.id, field.options.some(([value]) => value === values[field.id]) ? values[field.id] : "SKIP"])),
+      reading_materials: materials.join("|") || "SKIP",
+      reading_materials_other: materials.includes("other") ? scalar("reading_materials_other") : ""
+    };
+  }
+  function buildRecord(config, data, state) {
+    const order = (state.pages || []).flatMap(page => page.ids);
+    const answers = state.answers || {};
+    const prohibited = state.researchUseProhibited === true;
+    const record = {
+      schema_version: "2",
       study_id: config.studyId,
       instrument_version: config.instrumentVersion,
       consent_version: config.consentVersion,
       data_mode: config.mode,
       response_id: state.id,
-      consent: "yes",
+      record_type: prohibited ? "refusal" : "response",
+      research_use_allowed: prohibited ? "no" : "yes",
+      consent: prohibited ? (state.initialResearchConsent ? "withdrawn" : "no") : "yes",
       eligibility_japanese_l1: "yes",
       eligibility_english_learner: "yes",
       eligibility_age_18plus: "yes",
       consented_at_utc: state.consentedAt,
       completed_at_utc: state.completedAt,
       elapsed_seconds: Math.max(0, Math.round(state.elapsedSeconds)),
-      ...Object.fromEntries(data.background.map(field => [field.id, state.background[field.id] || "SKIP"])),
-      toeic_lr_reading: state.background.toeic_lr_reading || "",
-      toeic_test_month: state.background.toeic_test_month || "",
+      ...Object.fromEntries(data.background.map(field => [field.id, state.background?.[field.id] || "SKIP"])),
+      ...normalizeDaily(data, state.daily),
       presentation_order: order.join("|"),
-      ...Object.fromEntries(data.items.map(item => [item.id, state.answers[item.id]])),
-      scored_response_n: data.items.filter(item => item.dimension !== "attention" && /^[1-5]$/.test(state.answers[item.id])).length,
-      not_applicable_n: data.items.filter(item => state.answers[item.id] === "NA").length,
-      skipped_n: data.items.filter(item => state.answers[item.id] === "SKIP").length,
-      attention_check: state.answers.AC01 === "2" ? "pass" : ["NA", "SKIP"].includes(state.answers.AC01) ? "missing" : "flag",
-      ...score(data.items, state.answers),
-      feedback: state.feedback || ""
+      ...Object.fromEntries(data.items.map(item => [item.id, answers[item.id]])),
+      scored_response_n: data.items.filter(item => item.dimension !== "attention" && /^[1-5]$/.test(answers[item.id])).length,
+      not_applicable_n: data.items.filter(item => answers[item.id] === "NA").length,
+      skipped_n: data.items.filter(item => answers[item.id] === "SKIP").length,
+      attention_check: answers.AC01 === "2" ? "pass" : ["NA", "SKIP"].includes(answers.AC01) ? "missing" : "flag",
+      ...score(data.items, answers),
+      ...Object.fromEntries(data.openQuestions.map(field => [field.id, state.openResponses?.[field.id] || ""]))
     };
+    if (prohibited) {
+      const keep = new Set(["schema_version", "study_id", "instrument_version", "consent_version", "data_mode", "response_id", "record_type", "research_use_allowed", "consent"]);
+      return Object.fromEntries(Object.entries(record).map(([key, value]) => [key, keep.has(key) ? value : ""]));
+    }
+    if (order.length !== data.items.length || new Set(order).size !== data.items.length || data.items.some(item => !order.includes(item.id))) throw new Error("提示順の整合性を確認できません。");
+    if (!data.items.every(item => validResponses.has(answers[item.id]))) throw new Error("未回答の項目があります。");
+    if (!state.consentedAt || !state.completedAt) throw new Error("回答完了時刻または同意記録がありません。");
+    return record;
   }
-  const core = { validResponses, shuffle, makePages, csvCell, toCsv, score, validateStudy, buildRecord };
+  const core = { validResponses, shuffle, makePages, csvCell, toCsv, score, validateStudy, normalizeDaily, buildRecord };
   globalThis.SurveyCore = core;
   if (typeof module !== "undefined") module.exports = core;
 })();

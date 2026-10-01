@@ -1,4 +1,4 @@
-/* Dev-only: requires Playwright and an installed Chrome. No dependency is shipped to respondents. */
+/* Dev-only: Playwright + installed Chrome. No runtime dependency for respondents. */
 const { chromium } = require('playwright');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -10,6 +10,39 @@ const base = process.env.SURVEY_TEST_URL || 'http://127.0.0.1:8000/';
 const output = path.resolve(__dirname, '../test-results');
 fs.mkdirSync(output, { recursive: true });
 
+async function start(page) {
+  for (const checkbox of await page.locator('#consent-form input[required]').all()) await checkbox.check();
+  await page.locator('#start').click();
+}
+async function passIntroduction(page) {
+  await start(page);
+  await page.locator('#next').click(); // Background → daily use
+  await page.locator('#next').click(); // Daily use → practice
+  await page.locator('#next').click(); // Practice → questions
+}
+async function answerAll(page, value = 'SKIP') {
+  for (let p = 0; p < 6; p++) {
+    assert.doesNotMatch(await page.locator('#app').innerText(), /Part A|PART A|Part B|PART B|パート[AB]/);
+    for (const input of await page.locator(`.question input[value="${value}"]`).all()) await input.check();
+    await page.locator('#next').click();
+  }
+}
+async function downloadRow(page, button, name) {
+  const [download] = await Promise.all([page.waitForEvent('download'), page.locator(button).click()]);
+  const file = path.join(output, name || download.suggestedFilename());
+  await download.saveAs(file);
+  const bytes = fs.readFileSync(file);
+  assert.deepEqual([...bytes.subarray(0, 3)], [239, 187, 191]);
+  const rows = JSON.parse(execFileSync('python3', ['-c', 'import csv,json,sys; print(json.dumps(list(csv.DictReader(open(sys.argv[1],encoding="utf-8-sig",newline=""))),ensure_ascii=False))', file], { encoding: 'utf8' }));
+  assert.equal(rows.length, 1);
+  return { row: rows[0], bytes, filename: download.suggestedFilename() };
+}
+function assertRefusal(row) {
+  assert.equal(row.research_use_allowed, 'no'); assert.equal(row.record_type, 'refusal');
+  const permitted = new Set(['schema_version', 'study_id', 'instrument_version', 'consent_version', 'data_mode', 'response_id', 'record_type', 'research_use_allowed', 'consent']);
+  for (const [key, value] of Object.entries(row)) if (!permitted.has(key)) assert.equal(value, '', key);
+}
+
 (async () => {
   const browser = await chromium.launch({ channel: 'chrome', headless: true });
   try {
@@ -20,25 +53,60 @@ fs.mkdirSync(output, { recursive: true });
     page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
     page.on('request', request => { if (!request.url().startsWith(new URL(base).origin) && !request.url().startsWith('blob:')) externalRequests.push(request.url()); });
     await page.goto(base);
+    assert.match(await page.locator('#app').innerText(), /結果によって成績が下がることはありません/);
+    assert.match(await page.locator('#app').innerText(), /個人が特定されるような形式で公開することはありません/);
     await page.screenshot({ path: path.join(output, 'desktop-welcome.png'), fullPage: true });
-    await page.locator('#start').click();
-    assert.equal(await page.locator('#consent-form').count(), 1);
-    for (const checkbox of await page.locator('#consent-form input').all()) await checkbox.check();
-    await page.locator('#start').click();
+    await page.locator('#start').click(); assert.equal(await page.locator('#consent-form').count(), 1);
+    await start(page);
     await page.locator('[name=age_group]').selectOption('20_24');
     await page.locator('[name=reading_frequency]').selectOption('weekly_3_4');
-    await page.locator('[name=toeic_lr_reading]').fill('500');
     await page.locator('#next').click();
-    assert.equal(await page.locator('#background-form').count(), 1);
+    await page.locator('[name=exam_types][value=toeic_lr]').check();
+    await page.locator('[name=toeic_lr_total]').fill('995');
+    await page.locator('#next').click(); assert.equal(await page.locator('#daily-form').count(), 1);
+    await page.locator('[name=toeic_lr_total]').fill('850');
     await page.locator('[name=toeic_lr_reading]').fill('350');
+    await page.locator('#next').click(); assert.ok(await page.locator('#error').isVisible());
+    await page.locator('[name=toeic_lr_reading]').fill('400');
+    assert.ok(await page.locator('#error').isHidden());
     await page.locator('[name=toeic_test_month]').fill('2025-06');
+    await page.locator('[name=exam_types][value=eiken]').check();
+    await page.locator('[name=eiken_latest_passed_grade]').selectOption('pre_2_plus');
+    await page.locator('[name=exam_types][value=other]').check();
+    await page.locator('[name=other_exam_details]').fill('=その他の試験,"結果"\n600点');
+    // Exclusive none and stale details must clear.
+    await page.locator('[name=exam_types][value=none]').check();
+    assert.equal(await page.locator('[name=exam_types]:checked').count(), 1);
+    assert.ok(await page.locator('[name=toeic_lr_total]').isDisabled());
+    assert.equal(await page.locator('[name=toeic_lr_total]').inputValue(), '');
+    for (const value of ['toeic_lr', 'eiken', 'other']) await page.locator(`[name=exam_types][value=${value}]`).check();
+    assert.equal(await page.locator('[name=exam_types][value=none]').isChecked(), false);
+    await page.locator('[name=toeic_lr_total]').fill('850');
+    await page.locator('[name=toeic_lr_reading]').fill('400');
+    await page.locator('[name=toeic_test_month]').fill('2025-06');
+    await page.locator('[name=eiken_latest_passed_grade]').selectOption('pre_2_plus');
+    await page.locator('[name=other_exam_details]').fill('=その他の試験,"結果"\n600点');
+    await page.locator('[name=extra_reading_frequency]').selectOption('weekly');
+    await page.locator('[name=extra_reading_time]').selectOption('30_to_59');
+    await page.locator('[name=reading_materials][value=other]').check();
+    await page.locator('[name=reading_materials_other]').fill('古い入力');
+    await page.locator('[name=reading_materials][value=none]').check();
+    assert.equal(await page.locator('[name=reading_materials_other]').inputValue(), '');
+    for (const value of ['news', 'social', 'other']) await page.locator(`[name=reading_materials][value=${value}]`).check();
+    await page.locator('[name=reading_materials_other]').fill('海外のレシピ');
+    await page.locator('[name=extensive_reading_experience]').selectOption('yes');
+    await page.locator('[name=english_country_stay_3months]').selectOption('no');
+    await page.screenshot({ path: path.join(output, 'desktop-daily.png'), fullPage: true });
     await page.locator('#next').click();
+    await page.locator('[name=practice][value="4"]').check();
+    assert.match(await page.locator('#progress-text').innerText(), /0 \/ 33/);
+    await page.screenshot({ path: path.join(output, 'desktop-practice.png'), fullPage: true });
     await page.locator('#next').click();
-    assert.ok(await page.locator('#error').isVisible());
+    await page.locator('#next').click(); assert.ok(await page.locator('#error').isVisible());
     const initialOrder = await page.locator('.question').evaluateAll(nodes => nodes.map(n => n.id));
-    const expected = {};
-    const displayed = [];
+    const expected = {}, displayed = [];
     for (let p = 0; p < 6; p++) {
+      assert.doesNotMatch(await page.locator('body').innerText(), /PART [AB]|パート[AB]/);
       const names = await page.locator('.question').evaluateAll(nodes => nodes.map(n => n.id.slice(9)));
       displayed.push(...names);
       for (const id of names) {
@@ -48,88 +116,89 @@ fs.mkdirSync(output, { recursive: true });
       }
       if (p === 0) {
         await page.screenshot({ path: path.join(output, 'desktop-questions.png'), fullPage: true });
+        await page.locator('#back').click(); await page.locator('#back').click();
+        assert.equal(await page.locator('[name=toeic_lr_total]').inputValue(), '850');
+        assert.equal(await page.locator('[name=exam_types]:checked').count(), 3);
         await page.locator('#back').click();
         assert.equal(await page.locator('[name=reading_frequency]').inputValue(), 'weekly_3_4');
-        await page.locator('#next').click();
+        for (let i = 0; i < 3; i++) await page.locator('#next').click();
         assert.deepEqual(await page.locator('.question').evaluateAll(nodes => nodes.map(n => n.id)), initialOrder);
         for (const id of names) assert.ok(await page.locator(`input[name="${id}"][value="${expected[id]}"]`).isChecked());
       }
       await page.locator('#next').click();
     }
     assert.equal(new Set(displayed).size, 33);
-    assert.match(await page.locator('#progress-text').innerText(), /33 \/ 33/);
-    await page.locator('#feedback').fill('=日本語,"引用"\n改行テスト');
-    const [download] = await Promise.all([page.waitForEvent('download'), page.locator('#complete').click()]);
-    const csvPath = path.join(output, download.suggestedFilename());
-    await download.saveAs(csvPath);
-    const bytes = fs.readFileSync(csvPath);
-    assert.deepEqual([...bytes.subarray(0, 3)], [239, 187, 191]);
-    const parsed = JSON.parse(execFileSync('python3', ['-c', 'import csv,json,sys; print(json.dumps(list(csv.DictReader(open(sys.argv[1],encoding="utf-8-sig",newline=""))),ensure_ascii=False))', csvPath], { encoding: 'utf8' }));
-    assert.equal(parsed.length, 1);
-    const row = parsed[0];
+    await page.locator('#free_learning_experience').fill('=英語学習,"楽しい"\n改行テスト');
+    await page.locator('#free_reading_feelings').fill('長い英文は不安。でも物語は楽しい。');
+    await page.screenshot({ path: path.join(output, 'desktop-open.png'), fullPage: true });
+    await page.locator('#next').click(); await page.locator('#back').click();
+    assert.equal(await page.locator('#free_reading_feelings').inputValue(), '長い英文は不安。でも物語は楽しい。');
+    await page.locator('#next').click();
+    await page.locator('#prohibit-use').check(); await page.locator('#prohibit-use').uncheck();
+    const first = await downloadRow(page, '#complete'); const row = first.row;
     for (const item of data.items) assert.equal(row[item.id], expected[item.id]);
-    assert.equal(row.data_mode, 'preview');
-    assert.equal(row.metacognitive_mean_complete, '');
-    assert.equal(row.enjoyment_pleasure_candidate_mean_complete, '');
-    assert.equal(row.attention_check, 'pass');
-    assert.equal(row.toeic_lr_reading, '350');
-    assert.equal(row.reading_frequency, 'weekly_3_4');
-    assert.equal(row.feedback, '\'=日本語,"引用"\n改行テスト');
+    assert.equal(row.schema_version, '2'); assert.equal(row.research_use_allowed, 'yes');
+    assert.equal(row.data_mode, 'preview'); assert.equal(row.attention_check, 'pass');
+    assert.equal(row.metacognitive_mean_complete, ''); assert.equal(row.enjoyment_pleasure_candidate_mean_complete, '');
+    assert.equal(row.exam_types, 'toeic_lr|eiken|other'); assert.equal(row.toeic_lr_total, '850'); assert.equal(row.toeic_lr_reading, '400');
+    assert.equal(row.eiken_latest_passed_grade, 'pre_2_plus');
+    assert.equal(row.other_exam_details, '\'=その他の試験,"結果"\n600点');
+    assert.equal(row.reading_materials, 'social|news|other'); assert.equal(row.reading_materials_other, '海外のレシピ');
+    assert.equal(row.extra_reading_frequency, 'weekly'); assert.equal(row.extra_reading_time, '30_to_59');
+    assert.equal(row.extensive_reading_experience, 'yes'); assert.equal(row.english_country_stay_3months, 'no');
+    assert.equal(row.free_learning_experience, '\'=英語学習,"楽しい"\n改行テスト');
+    assert.equal(row.free_reading_feelings, '長い英文は不安。でも物語は楽しい。');
     assert.equal(row.presentation_order, displayed.join('|'));
-    const [retry] = await Promise.all([page.waitForEvent('download'), page.locator('#download').click()]);
-    await retry.saveAs(path.join(output, 'retry.csv'));
-    assert.equal(fs.readFileSync(path.join(output, 'retry.csv'), 'utf8'), bytes.toString('utf8'));
+    assert.ok(!Object.keys(row).some(key => key.includes('practice')));
+    const retry = await downloadRow(page, '#download', 'retry.csv'); assert.deepEqual(retry.bytes, first.bytes);
     await page.screenshot({ path: path.join(output, 'desktop-complete.png'), fullPage: true });
     assert.deepEqual(await page.evaluate(() => ({ local: localStorage.length, session: sessionStorage.length })), { local: 0, session: 0 });
-    assert.deepEqual(externalRequests, []);
-    assert.deepEqual(errors, []);
+    assert.deepEqual(externalRequests, []); assert.deepEqual(errors, []);
     await page.locator('#clear').click();
-    assert.equal(await page.locator('#consent-form').count(), 1);
+    // Early refusal needs no eligibility or participation affirmation and asks no questions.
+    await page.locator('#prohibit-use').check();
+    const early = await downloadRow(page, '#start', 'early-refusal.csv');
+    assertRefusal(early.row); assert.equal(early.row.consent, 'no'); assert.ok(early.filename.includes('no_use'));
 
-    const mobile = await context.newPage();
-    await mobile.setViewportSize({ width: 375, height: 812 });
-    await mobile.goto(base);
-    await mobile.screenshot({ path: path.join(output, 'mobile-welcome.png'), fullPage: true });
-    for (const checkbox of await mobile.locator('#consent-form input').all()) await checkbox.check();
-    await mobile.locator('#start').click();
+    const mobile = await context.newPage(); await mobile.setViewportSize({ width: 375, height: 812 });
+    await mobile.goto(base); await mobile.screenshot({ path: path.join(output, 'mobile-welcome.png'), fullPage: true });
+    await start(mobile); await mobile.locator('#next').click();
+    await mobile.locator('[name=exam_types][value=toeic_lr]').check();
+    assert.ok(await mobile.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await mobile.screenshot({ path: path.join(output, 'mobile-daily.png'), fullPage: true });
+    await mobile.locator('#next').click();
+    await mobile.screenshot({ path: path.join(output, 'mobile-practice.png'), fullPage: true });
     await mobile.locator('#next').click();
     assert.ok(await mobile.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     await mobile.screenshot({ path: path.join(output, 'mobile-questions.png'), fullPage: true });
-    await mobile.screenshot({ path: path.join(output, 'mobile-viewport.png') });
-    mobile.on('dialog', dialog => dialog.accept());
-    await mobile.locator('#quit').click();
-    assert.equal(await mobile.locator('#consent-form').count(), 1);
+    mobile.on('dialog', dialog => dialog.accept()); await mobile.locator('#quit').click();
 
     const blocked = await context.newPage();
-    await blocked.route('**/config.js', async route => {
-      const response = await route.fetch();
-      await route.fulfill({ response, body: (await response.text()).replace('mode: "preview"', 'mode: "live"') });
-    });
-    await blocked.goto(base);
-    assert.equal(await blocked.locator('#start').count(), 0);
-    assert.match(await blocked.locator('#app').innerText(), /調査の準備中/);
+    await blocked.route('**/config.js', async route => { const response = await route.fetch(); await route.fulfill({ response, body: (await response.text()).replace('mode: "preview"', 'mode: "live"') }); });
+    await blocked.goto(base); assert.equal(await blocked.locator('#start').count(), 0);
 
     const live = await context.newPage();
     await live.route('**/config.js', async route => {
       const response = await route.fetch();
-      const override = { mode: 'live', researcher: 'テスト責任者', affiliation: 'テスト所属', contact: 'テスト連絡先', ethicsStatement: 'テスト用の説明', retentionStatement: 'テスト用の保管説明', withdrawalStatement: 'テスト用の撤回説明', submissionUrl: 'https://example.org/upload' };
+      const override = { mode: 'live', researcher: 'テスト責任者', affiliation: 'テスト所属', contact: 'テスト連絡先', ethicsStatement: 'テスト用説明', retentionStatement: 'テスト用保管説明', withdrawalStatement: 'テスト用撤回説明', submissionUrl: 'https://example.org/upload' };
       await route.fulfill({ response, body: (await response.text()) + '\nglobalThis.SURVEY_CONFIG = {...globalThis.SURVEY_CONFIG,...' + JSON.stringify(override) + '};' });
     });
-    await live.goto(base);
-    assert.equal(await live.locator('#mode-banner').isVisible(), false);
-    for (const checkbox of await live.locator('#consent-form input').all()) await checkbox.check();
-    await live.locator('#start').click(); await live.locator('#next').click();
-    for (let p = 0; p < 6; p++) {
-      for (const input of await live.locator('.question input[value=SKIP]').all()) await input.check();
-      await live.locator('#next').click();
-    }
-    const [liveDownload] = await Promise.all([live.waitForEvent('download'), live.locator('#complete').click()]);
-    assert.ok(liveDownload.suggestedFilename().startsWith('reading_live_'));
+    await live.goto(base); await passIntroduction(live); await answerAll(live, '5');
+    await live.locator('#free_learning_experience').fill('この回答を保存しないこと');
+    await live.locator('#next').click(); await live.locator('#prohibit-use').check();
+    await live.locator('#back').click(); await live.locator('#next').click();
+    assert.ok(await live.locator('#prohibit-use').isChecked());
+    const refusal = await downloadRow(live, '#complete', 'completed-refusal.csv');
+    assertRefusal(refusal.row); assert.equal(refusal.row.consent, 'withdrawn');
     assert.equal(await live.getByRole('link', { name: '指定された提出先を開く ↗' }).getAttribute('href'), 'https://example.org/upload');
+    await live.locator('#clear').click(); await passIntroduction(live); await answerAll(live);
+    await live.locator('#next').click();
+    const allowed = await downloadRow(live, '#complete', 'live-empty-optionals.csv');
+    assert.equal(allowed.row.research_use_allowed, 'yes'); assert.equal(allowed.row.exam_types, 'SKIP');
+    assert.equal(allowed.row.free_reading_feelings, ''); assert.ok(allowed.filename.startsWith('reading_live_'));
 
-    const file = await context.newPage();
-    await file.goto(pathToFileURL(path.resolve(__dirname, '../site/index.html')).href);
+    const file = await context.newPage(); await file.goto(pathToFileURL(path.resolve(__dirname, '../site/index.html')).href);
     assert.equal(await file.locator('#start').count(), 1);
-    console.log(JSON.stringify({ status: 'passed', downloadedColumns: Object.keys(row).length, itemCount: 33, externalRequests: externalRequests.length, consoleErrors: errors.length, screenshots: output }, null, 2));
+    console.log(JSON.stringify({ status: 'passed', downloadedColumns: Object.keys(row).length, itemCount: 33, dailyQuestions: 6, openQuestions: 2, refusalContent: 'empty', externalRequests: externalRequests.length, consoleErrors: errors.length, screenshots: output }, null, 2));
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

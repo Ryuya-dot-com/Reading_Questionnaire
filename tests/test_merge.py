@@ -15,7 +15,7 @@ class MergeTest(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.raw = self.root / "raw"
         self.raw.mkdir()
-        self.row = {"response_id": "rq-one", "schema_version": "1", "study_id": "reading", "instrument_version": "1", "consent_version": "1", "data_mode": "live", "consent": "yes", **dict.fromkeys(module.ITEMS, "3"), "feedback": '日本語,「読解」\n"引用"'}
+        self.row = {"response_id": "rq-one", "schema_version": "2", "study_id": "reading", "instrument_version": "2", "consent_version": "2", "data_mode": "live", "consent": "yes", "research_use_allowed": "yes", "record_type": "response", **dict.fromkeys(module.ITEMS, "3"), "free_learning_experience": '日本語,「読解」\n"引用"'}
 
     def tearDown(self):
         self.temp.cleanup()
@@ -30,7 +30,7 @@ class MergeTest(unittest.TestCase):
         self.write("one.csv", self.row)
         self.write("copy.csv", self.row)
         output = self.root / "all.csv"
-        self.assertEqual(module.merge(self.raw, output), (1, 1, 0))
+        self.assertEqual(module.merge(self.raw, output), (1, 1, 0, 0))
         self.assertEqual(output.read_bytes()[:3], b"\xef\xbb\xbf")
         with output.open(encoding="utf-8-sig", newline="") as file:
             self.assertEqual(list(csv.DictReader(file)), [self.row])
@@ -50,17 +50,44 @@ class MergeTest(unittest.TestCase):
         self.write("one.csv", {**self.row, "data_mode": "preview"})
         with self.assertRaisesRegex(ValueError, "結合する回答がありません"):
             module.merge(self.raw, self.root / "all.csv")
-        self.assertEqual(module.merge(self.raw, self.root / "all.csv", True), (1, 0, 0))
+        self.assertEqual(module.merge(self.raw, self.root / "all.csv", True), (1, 0, 0, 0))
 
     def test_version_mixing_rejected(self):
         self.write("one.csv", self.row)
-        self.write("two.csv", {**self.row, "response_id": "rq-two", "instrument_version": "2"})
+        self.write("two.csv", {**self.row, "response_id": "rq-two", "instrument_version": "3"})
         with self.assertRaisesRegex(ValueError, "異なる調査"):
             module.merge(self.raw, self.root / "all.csv")
 
     def test_invalid_values_rejected(self):
         self.write("one.csv", {**self.row, "A01": "0"})
         with self.assertRaisesRegex(ValueError, "回答値が不正"):
+            module.merge(self.raw, self.root / "all.csv")
+
+    def test_refusal_overrides_earlier_and_later_answers(self):
+        refusal = {**self.row, "research_use_allowed": "no", "record_type": "refusal", "consent": "withdrawn", **dict.fromkeys(module.ITEMS, "")}
+        for name in ("aaa_refusal.csv", "zzz_refusal.csv"):
+            with self.subTest(name=name):
+                self.write(name, refusal)
+                self.write("middle.csv", self.row)
+                self.write("changed.csv", {**self.row, "A01": "5"})
+                self.write("kept.csv", {**self.row, "response_id": "rq-two"})
+                output = self.root / name
+                self.assertEqual(module.merge(self.raw, output, True), (1, 0, 0, 1))
+                with output.open(encoding="utf-8-sig", newline="") as file:
+                    self.assertEqual([row["response_id"] for row in csv.DictReader(file)], ["rq-two"])
+                (self.raw / name).unlink()
+
+    def test_only_refusals_never_written_even_with_preview_option(self):
+        self.write("refusal.csv", {**self.row, "data_mode": "preview", "research_use_allowed": "no", "record_type": "refusal", "consent": "no", **dict.fromkeys(module.ITEMS, "")})
+        with self.assertRaisesRegex(ValueError, "利用不可ID: 1件"):
+            module.merge(self.raw, self.root / "all.csv", True)
+        self.assertFalse((self.root / "all.csv").exists())
+
+    def test_missing_permission_fails_closed(self):
+        row = dict(self.row)
+        del row["research_use_allowed"]
+        self.write("missing.csv", row)
+        with self.assertRaisesRegex(ValueError, "データ利用の意思"):
             module.merge(self.raw, self.root / "all.csv")
 
 

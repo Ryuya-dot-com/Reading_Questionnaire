@@ -51,7 +51,20 @@
     { id: "reading_self_rating", label: "自分の英語の読解力についての評価", options: [["1", "とても低いと思う"], ["2", "やや低いと思う"], ["3", "どちらともいえない"], ["4", "やや高いと思う"], ["5", "とても高いと思う"]] },
     { id: "classroom_experience", label: "英語の授業を受けた経験", options: [["current", "現在受けている"], ["past", "以前受けていた"], ["none", "受けたことがない"]] }
   ];
-  const data = { items, choices, background };
+  const daily = [
+    { id: "extra_reading_frequency", label: "授業や課題以外で，英語の文章を読むことはどのくらいありますか。", options: [["daily", "ほぼ毎日"], ["weekly", "週に数回"], ["monthly", "月に数回"], ["rarely", "ほとんどない"]] },
+    { id: "extra_reading_time", label: "授業や課題以外で，英語の文章を読む時間は1週間でどのくらいですか。", options: [["none", "0分（読まない）"], ["under_30", "30分未満（0分を除く）"], ["30_to_59", "30分以上1時間未満"], ["60_to_179", "1時間以上3時間未満"], ["180_plus", "3時間以上"]] },
+    { id: "extensive_reading_experience", label: "これまでに，授業などで多読（やさしい英語の本をたくさん読む活動）をしたことがありますか。", options: [["yes", "ある"], ["no", "ない"], ["unsure", "分からない・覚えていない"]] },
+    { id: "english_country_stay_3months", label: "英語圏に3か月以上滞在したことがありますか。", options: [["yes", "ある"], ["no", "ない"], ["unsure", "分からない・覚えていない"]] }
+  ];
+  const examTypes = [["toeic_lr", "TOEIC L&R"], ["eiken", "英検"], ["other", "その他"], ["none", "受験したことがない"]];
+  const eikenGrades = [["1", "1級"], ["pre_1", "準1級"], ["2", "2級"], ["pre_2_plus", "準2級プラス"], ["pre_2", "準2級"], ["3", "3級"], ["4", "4級"], ["5", "5級"], ["no_pass", "合格した級はない"], ["unknown", "覚えていない"]];
+  const readingMaterials = [["social", "SNS・ネット上の投稿"], ["news", "ニュース・記事"], ["fiction", "小説・多読用の本"], ["academic", "専門の教科書・論文"], ["games_video", "ゲーム・動画の字幕や説明"], ["other", "その他"], ["none", "読むものはない"]];
+  const openQuestions = [
+    { id: "free_learning_experience", label: "これまでの英語学習で，楽しかったことや難しかったことがあれば，自由に書いてください。" },
+    { id: "free_reading_feelings", label: "ふだん英語を読むときに，不安になることや楽しいと感じることがあれば，自由に書いてください。" }
+  ];
+  const data = { items, choices, background, daily, examTypes, eikenGrades, readingMaterials, openQuestions };
   globalThis.SurveyData = data;
   if (typeof module !== "undefined") module.exports = data;
 })();

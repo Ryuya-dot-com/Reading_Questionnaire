@@ -2,8 +2,8 @@
 globalThis.SURVEY_CONFIG = Object.freeze({
   mode: "preview", // preview（動作確認）または live（本調査）
   studyId: "reading-emotions-ja",
-  instrumentVersion: "2026-10-01.1",
-  consentVersion: "2026-10-01.1",
+  instrumentVersion: "2026-10-01.2",
+  consentVersion: "2026-10-01.2",
   researcher: "",
   affiliation: "",
   contact: "",
