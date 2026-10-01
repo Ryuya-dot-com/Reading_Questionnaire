@@ -117,11 +117,12 @@
     };
   }
   function buildRecord(config, data, state) {
+    if (typeof state.researchUseProhibited !== "boolean") throw new Error("データ利用の意思が選択されていません。");
     const order = (state.pages || []).flatMap(page => page.ids);
     const answers = state.answers || {};
     const prohibited = state.researchUseProhibited === true;
     const record = {
-      schema_version: "3",
+      schema_version: "4",
       study_id: config.studyId,
       instrument_version: config.instrumentVersion,
       consent_version: config.consentVersion,
@@ -136,6 +137,8 @@
       consented_at_utc: state.consentedAt,
       completed_at_utc: state.completedAt,
       elapsed_seconds: Math.max(0, Math.round(state.elapsedSeconds)),
+      participant_name: state.background?.participant_name || "",
+      student_id: state.background?.student_id || "",
       ...Object.fromEntries(data.background.map(field => [field.id, state.background?.[field.id] || "SKIP"])),
       ...normalizeDaily(data, state.daily),
       randomization_method: "language_blocks_and_within_language_v1",

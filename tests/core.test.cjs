@@ -5,7 +5,7 @@ const data = require('../site/items.js');
 require('../site/config.js');
 
 function state() {
-  return { id: 'rq-test', consentedAt: '2026-10-01T01:00:00.000Z', completedAt: '2026-10-01T01:10:00.000Z', elapsedSeconds: 600,
+  return { id: 'rq-test', researchUseProhibited: false, consentedAt: '2026-10-01T01:00:00.000Z', completedAt: '2026-10-01T01:10:00.000Z', elapsedSeconds: 600,
     pages: core.makePages(data.items), answers: Object.fromEntries(data.items.map(item => [item.id, '3'])), background: {}, timings: {} };
 }
 test('尺度の構成は英語23+9、日本語7、独立した注意確認1項目', () => {
@@ -88,10 +88,29 @@ test('本調査モードの必須説明が空欄なら開始できない', () =>
   for (const key of core.validateStudy(complete)) complete[key] = '設定済み';
   assert.deepEqual(core.validateStudy(complete), []);
 });
+test('利用意思の未選択・文字列・不正値を同意として扱わない', () => {
+  for (const value of [undefined, null, '', 'yes', 'no', 0, 1]) {
+    assert.throws(() => core.buildRecord(globalThis.SURVEY_CONFIG, data, { ...state(), researchUseProhibited: value }), /データ利用の意思/);
+  }
+});
+test('氏名と学籍番号は文字列で保存し、空欄は空欄のまま扱う', () => {
+  const s = state();
+  s.background = { participant_name: '山田 "テスト",確認', student_id: '001234' };
+  const result = core.buildRecord(globalThis.SURVEY_CONFIG, data, s);
+  assert.equal(result.participant_name, s.background.participant_name);
+  assert.equal(result.student_id, '001234');
+  assert.equal(core.csvCell(result.participant_name), '"山田 ""テスト"",確認"');
+  assert.equal(core.csvCell(result.student_id), '"001234"');
+  s.background.student_id = '=1+1';
+  assert.equal(core.csvCell(core.buildRecord(globalThis.SURVEY_CONFIG, data, s).student_id), '"\'=1+1"');
+  const blank = core.buildRecord(globalThis.SURVEY_CONFIG, data, state());
+  assert.equal(blank.participant_name, ''); assert.equal(blank.student_id, '');
+});
 test('利用不可CSVは回答内容・背景・自由記述・時刻・得点を一切出力しない', () => {
   const s = state();
   s.researchUseProhibited = true; s.initialResearchConsent = true;
   s.background.age_group = '20_24';
+  s.background.participant_name = '保存しない氏名'; s.background.student_id = '001234';
   s.daily = { exam_types: ['toeic_lr'], toeic_lr_total: '850' };
   s.openResponses = { free_learning_experience: '保存されてはいけない内容' };
   s.timings = { A01: { rt_first_ms: 250, active_ms: 500, visit_n: 1, change_n: 0, pause_n: 0 } };
@@ -122,7 +141,7 @@ test('複数選択・noneの排他性・解除した資格の詳細を正規化'
 test('新しい自由記述2項目を保存し練習回答を保存しない', () => {
   const s = state(); s.openResponses = { free_learning_experience: '楽しかった', free_reading_feelings: '不安もある' }; s.practiceAnswer = '5';
   const record = core.buildRecord(globalThis.SURVEY_CONFIG, data, s);
-  assert.equal(record.schema_version, '3');
+  assert.equal(record.schema_version, '4');
   assert.equal(record.free_learning_experience, '楽しかった');
   assert.equal(record.free_reading_feelings, '不安もある');
   assert.ok(!Object.keys(record).some(key => key.includes('practice')));
@@ -189,5 +208,5 @@ test('日本語生回答・計時・方法・言語順を固定列で出力し�
   assert.equal(result.J01_rt_first_ms, '');
   assert.equal(result.timing_method, 'single_item_visible_focused_v1');
   assert.equal(result.language_block_order, [...new Set(s.pages.map(p => p.language))].join('|'));
-  assert.equal(Object.keys(result).length, 299);
+  assert.equal(Object.keys(result).length, 301);
 });

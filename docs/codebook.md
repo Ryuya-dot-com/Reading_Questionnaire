@@ -1,12 +1,12 @@
 # CSVコードブック
 
-質問紙版・同意版：2026-10-01.4。CSVスキーマ3、299列、1回答者1行のwide形式。ファイル先頭はUTF-8 BOM、行末はCRLFです。列名は解析しやすいASCII、自由記述は日本語のまま保存します。
+質問紙版・同意版：2026-10-01.5。CSVスキーマ4、301列、1回答者1行のwide形式。ファイル先頭はUTF-8 BOM、行末はCRLFです。列名は解析しやすいASCII、自由記述は日本語のまま保存します。
 
 ## 最初に確認する利用意思
 
 分析対象は `record_type=response` かつ `research_use_allowed=yes` かつ `consent=yes` の本調査回答です。`data_mode=preview` は動作確認用であり、研究には使用しません。
 
-`record_type=refusal` かつ `research_use_allowed=no` は利用不可の管理記録です。この場合、`schema_version`、`study_id`、`instrument_version`、`consent_version`、`data_mode`、`response_id`、`record_type`、`research_use_allowed`、`consent` の9列以外はすべて空欄です。空欄を通常の欠測回答として扱わず、研究分析から除外します。結合スクリプトは同じIDの回答も入力順によらず除外します。既存ファイルや分析結果の削除は研究者側の対応が別途必要です。
+`record_type=refusal` かつ `research_use_allowed=no` は利用不可の管理記録です。この場合、`schema_version`、`study_id`、`instrument_version`、`consent_version`、`data_mode`、`response_id`、`record_type`、`research_use_allowed`、`consent` の9列以外は、氏名・学籍番号を含めすべて空欄です。空欄を通常の欠測回答として扱わず、研究分析から除外します。結合スクリプトは同じIDの回答も入力順によらず除外します。既存ファイルや分析結果の削除は研究者側の対応が別途必要です。
 
 ## 回答値と欠測
 
@@ -24,21 +24,23 @@
 
 | 列名 | 定義 |
 | --- | --- |
-| `schema_version` | CSV列構成の版。現在は3。旧版の1・2とは列構成が異なる。 |
+| `schema_version` | CSV列構成の版。現在は4。旧版の1・2・3とは列構成が異なる。 |
 | `study_id` | 調査識別子。 |
 | `instrument_version` | 項目・教示・実施方法・得点化の版。 |
 | `consent_version` | 説明・同意文の版。 |
 | `data_mode` | preview=動作確認、live=本調査。混ぜて分析しない。 |
 | `response_id` | 端末で生成するrq-UUID。再ダウンロード時は同じID。別セッションの重複参加は検出しない。 |
 | `record_type` | response=回答記録、refusal=利用不可の管理記録。 |
-| `research_use_allowed` | yes=利用禁止を選択していない、no=利用禁止。previewのyesは本調査での使用許可を意味しない。 |
-| `consent` | yes=開始説明を確認し、同意ボタンで開始（previewでは動作確認）、no=開始前から利用禁止、withdrawn=開始後・完了前に利用禁止。 |
+| `research_use_allowed` | yes=利用禁止の質問で「いいえ」を明示的に選択、no=「はい」を選択して利用禁止。previewのyesは本調査での使用許可を意味しない。 |
+| `consent` | yes=開始説明を確認し、利用禁止の質問で「いいえ」を選び開始（previewでは動作確認）、no=開始前から利用禁止、withdrawn=開始後・完了前に利用禁止。 |
 | `eligibility_japanese_l1` | yes=日本語母語（複数母語を含む）の自己確認。 |
 | `eligibility_english_learner` | yes=英語学習者の自己確認。 |
 | `eligibility_age_18plus` | yes=18歳以上の自己確認。 |
 | `consented_at_utc` | 開始確認時刻。ISO 8601のUTC（末尾Z）。端末時計による。 |
 | `completed_at_utc` | 回答完了操作時刻。ISO 8601のUTC。端末時計による。 |
 | `elapsed_seconds` | 開始から完了までの経過秒。背景入力・中断を含む。読解時間ではない。 |
+| `participant_name` | 氏名。任意入力の文字列（最大100文字）。未入力・利用禁止時は空欄。 |
+| `student_id` | 学籍番号。任意入力の文字列（最大80文字）。先頭の0・英字を保持。未入力・利用禁止時は空欄。Excel取り込み時は文字列型を指定する。 |
 | `randomization_method` | `language_blocks_and_within_language_v1`。言語ブロック順と各言語内の項目順をFisher–Yates法で無作為化。 |
 | `language_block_order` | `en|ja` または `ja|en`。独立した無作為割当なので人数が正確に半々になるとは限らない。 |
 | `timing_method` | `single_item_visible_focused_v1`。下記の計時定義を参照。 |
@@ -47,6 +49,8 @@
 | `not_applicable_n` | NAの数。40項目（AC01を含む）。 |
 | `skipped_n` | SKIPの数。40項目（AC01を含む）。 |
 | `attention_check` | pass=AC01が2、flag=1/3/4/5、missing=NA/SKIP。自動除外の指示ではない。 |
+
+氏名・学籍番号はCSVの回答者IDとは別の列です。無記名データではないため、分析・共有用のデータから識別情報を分離してください。数式として解釈されうる先頭文字には、他の文字列と同様にCSV出力時にアポストロフィを付加します。
 
 質問紙への経過時間には、背景・日常の英語使用・練習・自由記述の入力と中断を含みます。練習例の回答は列を設けず、保存・得点化しません。旧版の画面へのコメント `feedback` は削除し、下記の自由記述2列に変更しました。
 

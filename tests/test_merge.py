@@ -122,6 +122,23 @@ class MergeTest(unittest.TestCase):
         self.write("legacy.csv", row)
         self.assertEqual(module.merge(self.raw, self.root / "all.csv"), (1, 0, 0, 0))
 
+    def test_schema4_identity_strings_and_refusal(self):
+        row = {**self.schema3(), "schema_version": "4", "participant_name": '山田 "テスト",確認', "student_id": "001234"}
+        self.write("one.csv", row)
+        self.write("refusal.csv", {**row, "response_id": "rq-refusal", "participant_name": "", "student_id": "", "consent": "no", "research_use_allowed": "no", "record_type": "refusal"})
+        output = self.root / "all.csv"
+        self.assertEqual(module.merge(self.raw, output), (1, 0, 0, 1))
+        with output.open(encoding="utf-8-sig", newline="") as file:
+            self.assertEqual(list(csv.DictReader(file)), [row])
+
+    def test_schema4_requires_identity_columns_but_accepts_blank_values(self):
+        row = {**self.schema3(), "schema_version": "4", "participant_name": ""}
+        self.write("one.csv", row)
+        with self.assertRaisesRegex(ValueError, "氏名・学籍番号列"):
+            module.merge(self.raw, self.root / "all.csv")
+        self.write("one.csv", {**row, "student_id": ""})
+        self.assertEqual(module.merge(self.raw, self.root / "all.csv"), (1, 0, 0, 0))
+
 
 if __name__ == "__main__":
     unittest.main()

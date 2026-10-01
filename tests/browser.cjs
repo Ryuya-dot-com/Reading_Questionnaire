@@ -13,17 +13,13 @@ fs.mkdirSync(output, { recursive: true });
 
 async function start(page) {
   for (const checkbox of await page.locator('#consent-form input[required]').all()) await checkbox.check();
+  await page.locator('#prohibit-use-no').check();
   await page.locator('#start').click();
-}
-async function passIntroduction(page) {
-  await start(page);
-  await page.locator('#next').click(); // Background → daily use
-  await page.locator('#next').click(); // Daily use → practice
-  await page.locator('#next').click(); // Practice → questions
 }
 async function answerAll(page, value = 'SKIP') {
   for (let p = 0; p < data.items.length; p++) {
     assert.doesNotMatch(await page.locator('#app').innerText(), /Part A|PART A|Part B|PART B|パート[AB]/);
+    assert.equal(await page.locator('a:not([href^="#"])').count(), 0);
     for (const input of await page.locator(`.question input[value="${value}"]`).all()) await input.check();
     await page.locator('#next').click();
   }
@@ -57,8 +53,20 @@ function assertRefusal(row) {
     assert.match(await page.locator('#app').innerText(), /結果によって成績が下がることはありません/);
     assert.match(await page.locator('#app').innerText(), /個人が特定されるような形式で公開することはありません/);
     await page.screenshot({ path: path.join(output, 'desktop-welcome.png'), fullPage: true });
-    await page.locator('#start').click(); assert.equal(await page.locator('#consent-form').count(), 1);
+    assert.equal(await page.locator('[name=prohibit-use]:checked').count(), 0);
+    assert.equal(await page.locator('a[href="about.html"]').count(), 0);
+    assert.doesNotMatch(await page.locator('body').innerText(), /試作版|preview|GitHub Pages|計時中断回数/);
+    for (const checkbox of await page.locator('#consent-form input[required]').all()) await checkbox.check();
+    await page.locator('#start').click();
+    assert.equal(await page.locator('#consent-form').count(), 1);
+    assert.match(await page.locator('#error').innerText(), /はい.*いいえ/);
+    await page.locator('[name=consent]').uncheck();
+    await page.locator('#prohibit-use-no').check(); await page.locator('#start').click();
+    assert.equal(await page.locator('#consent-form').count(), 1);
     await start(page);
+    await page.locator('[name=participant_name]').fill('山田 "テスト",確認');
+    await page.locator('[name=student_id]').fill('001234');
+    await page.screenshot({ path: path.join(output, 'desktop-background.png'), fullPage: true });
     await page.locator('[name=age_group]').selectOption('20_24');
     await page.locator('[name=reading_frequency]').selectOption('weekly_3_4');
     await page.locator('#next').click();
@@ -123,7 +131,8 @@ function assertRefusal(row) {
     }
     const expected = {}, displayed = [], languages = [];
     for (let p = 0; p < data.items.length; p++) {
-      assert.doesNotMatch(await page.locator('body').innerText(), /PART [AB]|パート[AB]/);
+      assert.doesNotMatch(await page.locator('body').innerText(), /PART [AB]|パート[AB]|試作版|preview/);
+      assert.equal(await page.locator('a:not([href^="#"])').count(), 0);
       const names = await page.locator('.question').evaluateAll(nodes => nodes.map(n => n.id.slice(9)));
       displayed.push(...names);
       assert.equal(names.length, 1);
@@ -144,6 +153,8 @@ function assertRefusal(row) {
         assert.equal(await page.locator('[name=exam_types]:checked').count(), 3);
         await page.locator('#back').click();
         assert.equal(await page.locator('[name=reading_frequency]').inputValue(), 'weekly_3_4');
+        assert.equal(await page.locator('[name=participant_name]').inputValue(), '山田 "テスト",確認');
+        assert.equal(await page.locator('[name=student_id]').inputValue(), '001234');
         for (let i = 0; i < 3; i++) await page.locator('#next').click();
         assert.deepEqual(await page.locator('.question').evaluateAll(nodes => nodes.map(n => n.id)), initialOrder);
         for (const id of names) assert.ok(await page.locator(`input[name="${id}"][value="${expected[id]}"]`).isChecked());
@@ -163,10 +174,13 @@ function assertRefusal(row) {
     await page.locator('#next').click(); await page.locator('#back').click();
     assert.equal(await page.locator('#free_reading_feelings').inputValue(), '長い英文は不安。でも物語は楽しい。');
     await page.locator('#next').click();
-    await page.locator('#prohibit-use').check(); await page.locator('#prohibit-use').uncheck();
+    await page.locator('#prohibit-use-yes').check(); await page.locator('#prohibit-use-no').check();
+    await page.screenshot({ path: path.join(output, 'desktop-review.png'), fullPage: true });
     const first = await downloadRow(page, '#complete'); const row = first.row;
     for (const item of data.items) assert.equal(row[item.id], expected[item.id]);
-    assert.equal(row.schema_version, '3'); assert.equal(row.research_use_allowed, 'yes');
+    assert.equal(row.schema_version, '4');
+    assert.equal(Object.keys(row).length, 301);
+    assert.equal(row.participant_name, '山田 "テスト",確認'); assert.equal(row.student_id, '001234'); assert.equal(row.research_use_allowed, 'yes');
     assert.equal(row.data_mode, 'preview'); assert.equal(row.attention_check, 'pass');
     assert.equal(row.metacognitive_mean_complete, ''); assert.equal(row.enjoyment_pleasure_candidate_mean_complete, '');
     assert.equal(row.exam_types, 'toeic_lr|eiken|other'); assert.equal(row.toeic_lr_total, '850'); assert.equal(row.toeic_lr_reading, '400');
@@ -196,13 +210,16 @@ function assertRefusal(row) {
     assert.deepEqual(externalRequests, []); assert.deepEqual(errors, []);
     await page.locator('#clear').click();
     // Early refusal needs no eligibility or participation affirmation and asks no questions.
-    await page.locator('#prohibit-use').check();
+    await page.locator('#prohibit-use-yes').check();
     const early = await downloadRow(page, '#start', 'early-refusal.csv');
     assertRefusal(early.row); assert.equal(early.row.consent, 'no'); assert.ok(early.filename.includes('no_use'));
 
     const mobile = await context.newPage(); await mobile.setViewportSize({ width: 375, height: 812 });
     await mobile.goto(base); await mobile.screenshot({ path: path.join(output, 'mobile-welcome.png'), fullPage: true });
-    await start(mobile); await mobile.locator('#next').click();
+    await start(mobile);
+    assert.ok(await mobile.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await mobile.screenshot({ path: path.join(output, 'mobile-background.png'), fullPage: true });
+    await mobile.locator('#next').click();
     await mobile.locator('[name=exam_types][value=toeic_lr]').check();
     assert.ok(await mobile.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     await mobile.screenshot({ path: path.join(output, 'mobile-daily.png'), fullPage: true });
@@ -223,17 +240,27 @@ function assertRefusal(row) {
       const override = { mode: 'live', researcher: 'テスト責任者', affiliation: 'テスト所属', contact: 'テスト連絡先', ethicsStatement: 'テスト用説明', retentionStatement: 'テスト用保管説明', withdrawalStatement: 'テスト用撤回説明', submissionUrl: 'https://example.org/upload' };
       await route.fulfill({ response, body: (await response.text()) + '\nglobalThis.SURVEY_CONFIG = {...globalThis.SURVEY_CONFIG,...' + JSON.stringify(override) + '};' });
     });
-    await live.goto(base); await passIntroduction(live); await answerAll(live, '5');
+    await live.goto(base); await start(live);
+    await live.locator('[name=participant_name]').fill('保存しない氏名');
+    await live.locator('[name=student_id]').fill('00REFUSED');
+    for (let i = 0; i < 3; i++) await live.locator('#next').click();
+    await answerAll(live, '5');
     await live.locator('#free_learning_experience').fill('この回答を保存しないこと');
-    await live.locator('#next').click(); await live.locator('#prohibit-use').check();
+    await live.locator('#next').click(); await live.locator('#prohibit-use-yes').check();
     await live.locator('#back').click(); await live.locator('#next').click();
-    assert.ok(await live.locator('#prohibit-use').isChecked());
+    assert.ok(await live.locator('#prohibit-use-yes').isChecked());
     const refusal = await downloadRow(live, '#complete', 'completed-refusal.csv');
     assertRefusal(refusal.row); assert.equal(refusal.row.consent, 'withdrawn');
     assert.equal(await live.getByRole('link', { name: '指定された提出先を開く ↗' }).getAttribute('href'), 'https://example.org/upload');
-    await live.locator('#clear').click(); await passIntroduction(live); await answerAll(live);
+    await live.locator('#clear').click();
+    assert.equal(await live.locator('[name=prohibit-use]:checked').count(), 0);
+    await start(live);
+    assert.equal(await live.locator('[name=participant_name]').inputValue(), '');
+    assert.equal(await live.locator('[name=student_id]').inputValue(), '');
+    for (let i = 0; i < 3; i++) await live.locator('#next').click(); await answerAll(live);
     await live.locator('#next').click();
     const allowed = await downloadRow(live, '#complete', 'live-empty-optionals.csv');
+    assert.equal(allowed.row.participant_name, ''); assert.equal(allowed.row.student_id, '');
     assert.equal(allowed.row.research_use_allowed, 'yes'); assert.equal(allowed.row.exam_types, 'SKIP');
     assert.equal(allowed.row.free_reading_feelings, ''); assert.ok(allowed.filename.startsWith('reading_live_'));
 
